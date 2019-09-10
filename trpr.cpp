@@ -58,16 +58,16 @@ inline int isnan(double x) {return _isnan(x);}
 #include <arpa/inet.h>
 #endif // !WIN32
 
-#define VERSION "2.1b3"
+#define VERSION "2.1b7"
 
 #ifndef MIN
 #define MIN(X,Y) ((X<Y)?X:Y)
 #define MAX(X,Y) ((X>Y)?X:Y)
 #endif // !MIN
 
-const int MAX_LINE = 256;
+const int MAX_LINE = 1024;
 
-enum TraceFormat {TCPDUMP, DREC, NS};
+enum TraceFormat {TCPDUMP, MGEN, NS};
 enum PlotMode {RATE, INTERARRIVAL, LATENCY, DROPS, LOSS, LOSS2, COUNT, VELOCITY};
 
 class FastReader
@@ -352,8 +352,8 @@ class PacketEvent
         double		    rx_time;
         unsigned long   sequence;
         ::FlowId        flow_id;
-        double          pos_x;  // drec GPS only
-        double          pos_y;  // drec GPS only
+        double          pos_x;  // mgen GPS only
+        double          pos_y;  // mgen GPS only
         
 };  // end class PacketEvent
 
@@ -439,28 +439,46 @@ class TcpdumpEventParser : public EventParser
         bool GetNextPacketEvent(FILE*           filePtr, 
                                 PacketEvent*    theEvent, 
                                 double          timeout = -1.0);
+    
         unsigned int PackHexLine(char* text, char* buf, unsigned int buflen);
 
+        // IP protocol version
         unsigned int Version(const char* hdr) const
-            {  return (((unsigned char)hdr[0] >> 4 ) & 0x0f);}
+            {return (((unsigned char)hdr[0] >> 4 ) & 0x0f);}
 
+        
+        // IP protocol header length
         unsigned int HeaderLength(const char* hdr) const
-            {
-	            if(Version(hdr) == 4)
-	                return 4 * (((unsigned char)hdr[0]) & 0x0f);
-                else return 40;
-            }
-
+        {
+	        if(Version(hdr) == 4)
+	            return 4 * (((unsigned char)hdr[0]) & 0x0f);
+            else return 40;
+        }
+        // IP protocol payload length
         unsigned int PayloadLength(const char* hdr)
             {return (256 * (unsigned char)hdr[4] + (unsigned char)hdr[5]);}
-
-        unsigned  int TotalLength(const char* hdr)
+        // Total IP or ARP packet length
+        unsigned  int TotalLength(const char* hdr, const char* pname)
         {
-	      if(Version(hdr) == 4)    
-            return (256*((unsigned char)hdr[2]) + ((unsigned char)hdr[3]));
-	      else
-		    return (PayloadLength(hdr) + 40);
+            if (0 == strncmp(pname, "IP", 2))
+            {
+                if(Version(hdr) == 4)    
+                    return (256*((unsigned char)hdr[2]) + ((unsigned char)hdr[3]));
+                else
+                    return (PayloadLength(hdr) + 40);
+            }
+            else if (0 == strncmp(pname, "ARP", 3))
+            {
+                // ARP length is 8 + 2*hlen + 2*plen
+                return (8 + 2*((unsigned char)hdr[4]) + 2 * ((unsigned char)hdr[5]));
+            }
+            else
+            {
+                fprintf(stderr, "trpr error: unsupported packet type \"%s\" in tcpdump trace!\n", pname);
+                return 0;
+            }
         }
+        // IP packet protocol id
         unsigned char Protocol(char* hdr)
         {
             if(Version(hdr) == 4)
@@ -469,29 +487,65 @@ class TcpdumpEventParser : public EventParser
                 return ((unsigned char)hdr[6]);
 	    }
         
+        // IP packet ID (sequence) field
+        unsigned long Sequence(char* hdr)
+        {
+            if(Version(hdr) == 4)
+            {
+                return (256*((unsigned char)hdr[4]) + ((unsigned char)hdr[5]));
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        
+        
         const char* ProtocolType(unsigned char value) const;
                 
-        Address SourceAddress(const char* hdr) const
+        Address SourceAddress(const char* hdr, const char* pname) const
         {
-	        if (Version(hdr) == 4)
-            {   
+            unsigned int version = 4;
+            int offset = 0;
+            if (0 == strncmp(pname, "IP", 2))
+            {
+                version = Version(hdr);
+                if (4 == version)
+                    offset = 12;
+                else
+                    offset = 8;
+                                   
+            }
+            else if (0 == strncmp(pname, "ARP", 3))
+            {
+                // Make protocol is IP (PTYPE == 0x0800)
+                if ((0x08 != (unsigned char)hdr[2]) || (0x00 != (unsigned char)hdr[3]))
+                {
+                    fprintf(stderr, "trpr error: unsupported ARP PTYPE 0x%02x%02x in tcpdump trace!\n", hdr[2], hdr[3]);
+                    return Address("unknown");
+                }
+                version = 4;
+                offset = 8 + (unsigned char)hdr[4];  // 8 + hlen
+            }
+            if( 4 == version)
+            {
 	            unsigned long buf;
-	            buf =  ((256*256*256)*((unsigned char)hdr[12]) +
-                            (256*256)*((unsigned char)hdr[13]) +
-                                (256)*((unsigned char)hdr[14]) +
-                                      ((unsigned char)hdr[15]));
+	            buf =  ((256*256*256)*((unsigned char)hdr[offset]) +
+                            (256*256)*((unsigned char)hdr[offset+1]) +
+                                (256)*((unsigned char)hdr[offset+2]) +
+                                      ((unsigned char)hdr[offset+3]));
                 return Address(htonl(buf), Address::IPv4);
 	        }
 	        else // (Version(hdr) == 6)
 	        {
 	            unsigned long buf[4];
 	            Address theAddress;
-	            for(unsigned int i =0; i < 4; i++)
+	            for(unsigned int i = 0; i < 4; i++)
 	            {
-                    buf[i] = ((256*256*256)*((unsigned char)hdr[(i*4)+8]) +
-                                  (256*256)*((unsigned char)hdr[(i*4)+9]) +
-                                      (256)*((unsigned char)hdr[(i*4)+10]) +
-                                            ((unsigned char)hdr[(i*4)+11]));
+                    buf[i] = ((256*256*256)*((unsigned char)hdr[(i*4)+offset]) +
+                                  (256*256)*((unsigned char)hdr[(i*4)+offset+1]) +
+                                      (256)*((unsigned char)hdr[(i*4)+offset+2]) +
+                                            ((unsigned char)hdr[(i*4)+offset+3]));
                     buf[i] = htonl(buf[i]);
 	            }
 	            theAddress.SetIPv6(buf);
@@ -499,32 +553,54 @@ class TcpdumpEventParser : public EventParser
 	        }
 	    }
         
-        Address DestinationAddress(const char* hdr) const
+        Address DestinationAddress(const char* hdr, const char* pname) const
         {
-	        if(4 == Version(hdr))
+            unsigned int version = 4;
+            int offset = 0;
+            if (0 == strncmp(pname, "IP", 2))
             {
-                unsigned long buf = (((256*256*256)*((unsigned char)hdr[16]) +
-                                          (256*256)*((unsigned char)hdr[17]) +
-                                              (256)*((unsigned char)hdr[18]) +
-                                                    ((unsigned char)hdr[19])));
+                version = Version(hdr);
+                if (4 == version)
+                    offset = 16;
+                else
+                    offset = 24;
+                                   
+            }
+            else if (0 == strncmp(pname, "ARP", 3))
+            {
+                // Make protocol is IP (PTYPE == 0x0800)
+                if ((0x08 != (unsigned char)hdr[2]) || (0x00 != (unsigned char)hdr[3]))
+                {
+                    fprintf(stderr, "trpr error: unsupported ARP PTYPE 0x%02x%02x in tcpdump trace!\n", hdr[2], hdr[3]);
+                    return Address("unknown");
+                }
+                version = 4;
+                offset = 8 + 2*(unsigned char)hdr[4] + 4;  // 8 + hlen + plen + hlen
+            }
+            if( 4 == version)
+            {
+	            unsigned long buf;
+	            buf =  ((256*256*256)*((unsigned char)hdr[offset]) +
+                            (256*256)*((unsigned char)hdr[offset+1]) +
+                                (256)*((unsigned char)hdr[offset+2]) +
+                                      ((unsigned char)hdr[offset+3]));
                 return Address(htonl(buf), Address::IPv4);
 	        }
-	        else  // (6 == Version(hdr))
+	        else // (Version(hdr) == 6)
 	        {
 	            unsigned long buf[4];
 	            Address theAddress;
-	            for(unsigned int i = 0; i<=4 ; i++)
+	            for(unsigned int i = 0; i < 4; i++)
 	            {
-
-                    buf[i] = ((256*256*256)*((unsigned char)hdr[(i*4)+24]) +
-                                  (256*256)*((unsigned char)hdr[(i*4)+25]) +
-                                      (256)*((unsigned char)hdr[(i*4)+26]) +
-                                            ((unsigned char)hdr[(i*4)+27]));
+                    buf[i] = ((256*256*256)*((unsigned char)hdr[(i*4)+offset]) +
+                                  (256*256)*((unsigned char)hdr[(i*4)+offset+1]) +
+                                      (256)*((unsigned char)hdr[(i*4)+offset+2]) +
+                                            ((unsigned char)hdr[(i*4)+offset+3]));
                     buf[i] = htonl(buf[i]);
-                }
-                theAddress.SetIPv6(buf);
+	            }
+	            theAddress.SetIPv6(buf);
 	            return theAddress;
-	        }    
+	        }
         }
         
         unsigned short SourcePort(const char* hdr) const
@@ -552,13 +628,13 @@ class TcpdumpEventParser : public EventParser
       
 };  // end class TcpdumpEventParser
 
-class DrecEventParser : public EventParser
+class MgenEventParser : public EventParser
 {
     public:
         bool GetNextPacketEvent(FILE*           filePtr, 
                                 PacketEvent*    theEvent, 
                                 double          timeout = -1.0);
-};  // end class DrecEventParser
+};  // end class mgenEventParser
 
 
 class Point
@@ -656,7 +732,7 @@ class LossTracker
         unsigned long seq_qtr;
         unsigned long seq_last;
         
-        unsigned long flow_id; // makes sure all drec packets from same flow
+        unsigned long flow_id; // makes sure all mgen packets from same flow
 };  // end class LossTracker
 
 
@@ -708,7 +784,7 @@ class LossTracker2
         unsigned long   seq_hlf;
         unsigned long   seq_qtr;
         
-        unsigned long   flow_id;  // to make sure all drec packets from same flow
+        unsigned long   flow_id;  // to make sure all mgen packets from same flow
     
 };  // end class LossTracker2
 
@@ -810,7 +886,7 @@ int LossTracker3::Update(double theTime, unsigned long theSeq, unsigned long the
     else if (index < 0)
     {
         // Packet is quite a bit old, so consider it lost?
-        fprintf(stderr, "trpr: LossTracker3::Update() got very old packet (seq:%lu)?\n", theSeq);
+        fprintf(stderr, "trpr: LossTracker3::Update() warning: ignoring very old packet (seq:%lu)?\n", theSeq);
         return 0;
     }
     else if (SeqDelta(theSeq, seq_last) > 0)
@@ -1217,6 +1293,19 @@ class Flow
         void PrintHistogram(FILE* file) {histogram.Print(file);}
         double Percentile(double p) {return histogram.Percentile(p);}
         
+        bool TrumpType() const
+            {return trump_type;}
+        bool TrumpSrcAddr() const
+            {return trump_src_addr;}
+        bool TrumpSrcPort() const
+            {return trump_src_port;}
+        bool TrumpDstAddr() const
+            {return trump_dst_addr;}
+        bool TrumpDstPort() const
+            {return trump_dst_port;}
+        bool TrumpFlowId() const
+            {return trump_flow_id;}
+        
             
     private:
         bool           preset;  // used to mark preset flows from "flow" command
@@ -1228,6 +1317,13 @@ class Flow
         Address         dst_addr;
         int             dst_port;
         ::FlowId        flow_id;  // if applicable
+        
+        bool            trump_type;
+        bool            trump_src_addr;
+        bool            trump_src_port;
+        bool            trump_dst_addr;
+        bool            trump_dst_port;
+        bool            trump_flow_id;
         
         // Byte count accumulator
         double          last_time;  // used for inter-arrival delay plot
@@ -1667,6 +1763,11 @@ double LossTracker2::LossFraction()
 Flow::Flow(bool presetFlow)
     : preset(presetFlow), 
       type(NULL), type_len(0), src_port(-1), dst_port(-1),
+      // These "trump" members are used for "auto" flow enumeration
+      // if true, matches for the trumped component(s) are consolidated
+      // (i.e, a single flow.  Thus "auto Y,Y,Y" same as "flow X"
+      trump_type(false), trump_src_addr(false), trump_src_port(false),
+      trump_dst_addr(false), trump_dst_port(false),
       byte_count(0), accumulator(0.0), accumulator_count(0),
       last_time(-1.0), pos_x(999.0), pos_y(999.0),
       sum_init(true), sum_total(0.0), sum_var(0.0), 
@@ -1700,7 +1801,7 @@ bool Flow::Match(const char* theType,
                  const Address& dstAddr, unsigned short dstPort,
                  unsigned long flowId) const
 {
-    //fprintf(stderr, "Matching flow type:%s src:%s/%d dst:%s/%d ...\n",
+    //fprintf(stderr, "Matching flow type:%s src:%s/%d dst:%s/%d ...",
     //        theType, srcAddr.addr, srcPort, dstAddr.addr, dstPort);
     if ((type && !TypeMatch(theType)) ||    
         ((dst_port >= 0) && (dst_port != dstPort)) ||
@@ -1709,12 +1810,13 @@ bool Flow::Match(const char* theType,
         ((src_addr.IsValid()) && !(src_addr == srcAddr)) ||
         ((flow_id.IsValid()) && (flow_id != flowId)))
     {
-        //fprintf(stderr, "no match\n");
+        //fprintf(stderr, "(no match)  dst:%d dvalid:%d %s vs %s\n", 
+        //        (dst_addr == dstAddr), dst_addr.IsValid(), dst_addr.addr, dstAddr.addr); 
         return false;
     }
     else
     {
-        //fprintf(stderr, "match\n");
+        //fprintf(stderr, "(match)\n");
         return true;
     }
 }  // end Flow::Match()
@@ -1848,25 +1950,27 @@ void FlowList::Destroy()
 
 
 const char WILDCARD = 'X';
+const char TRUMPCARD = 'Y';
 
 inline void usage()
 {
     fprintf(stderr, "TRPR Version %s\n", VERSION);
-    fprintf(stderr, "Usage: trpr [version][mgen][ns][raw][key][real][loss][latency|interarrival]\n"
+    fprintf(stderr, "Usage: trpr [version][mgen][ns][raw][key]\n"
+             		"            [real][latency][interarrival][loss][count]\n"
                     "            [window <sec>] [history <sec>]\n"
                     "            [flow <type,srcAddr/port,dstAddr/port,flowId>]\n"
                     "            [auto <type,srcAddr/port,dstAddr/port,flowId>]\n"
                     "            [exclude <type,srcAddr/port,dstAddr/port,flowId>]\n"
                     "            [input <inputFile>] [output <outputFile>]\n"
                     "            [link <src>[,<dst>]][send|recv][nodup]\n"
-                    "            [xrange <min>[:<max>]][yrange <min>[:<max>]\n"
+                    "            [range <startSec>[:<stopSec>]][yrange <min>[:<max>]\n"
                     "            [offset <hh:mm:ss>][absolute]\n"
                     "            [summary][histogram][replay <factor>]\n"
-                    "            [png <pngFile>][post <postFile>][multiplot]\n"
+					"            [png <pngFile>][post <postFile>][gif <gifFile>][multiplot]\n"
                     "            [surname <titlePrefix>][ramp][scale]\n"
                     "            [nolegend]\n");
     fprintf(stderr, " (NOTE: 'Wildcard' type, addr, or port parameters with 'X'\n");
-    fprintf(stderr, "         xrange parameters are in seconds\n");
+    fprintf(stderr, "         'range' parameters are in seconds\n");
 
 }
 
@@ -1876,7 +1980,10 @@ bool Flow::InitFromDescription(char* flowInfo)
     flowInfo = strtok(flowInfo, ",");
     if (flowInfo) 
     {
-        if(WILDCARD != flowInfo[0]) SetType(flowInfo);
+        if (TRUMPCARD == flowInfo[0])
+            trump_type = true;
+        else if(WILDCARD != flowInfo[0]) 
+            SetType(flowInfo);
     }
     else
     {
@@ -1891,9 +1998,20 @@ bool Flow::InitFromDescription(char* flowInfo)
         if (ptr) 
         {
             *ptr++ = '\0';
-            if (WILDCARD != ptr[0]) SetSrcPort(atoi(ptr));
+            if (TRUMPCARD == ptr[0])
+                trump_src_port = true;
+            else if (WILDCARD != ptr[0]) 
+                SetSrcPort(atoi(ptr));
         }
-        if (WILDCARD != flowInfo[0]) SetSrcAddr(flowInfo);
+        if (TRUMPCARD == flowInfo[0])
+        {
+            trump_src_addr = true;
+            if (NULL == ptr) trump_src_port = true;
+        }
+        else if (WILDCARD != flowInfo[0]) 
+        {
+            SetSrcAddr(flowInfo);
+        }
 
         // Pull out destination addr/port, checking for wildcards
         flowInfo = strtok(NULL, ",");
@@ -1904,14 +2022,35 @@ bool Flow::InitFromDescription(char* flowInfo)
             if (ptr) 
             {
                 *ptr++ = '\0';
-                if (WILDCARD != ptr[0]) SetDstPort(atoi(ptr));
+                if (TRUMPCARD == ptr[0])
+                    trump_dst_port = true;
+                else if (WILDCARD != ptr[0]) 
+                    SetDstPort(atoi(ptr));
             }
-            if (WILDCARD != flowInfo[0]) SetDstAddr(flowInfo);
+            if (TRUMPCARD == flowInfo[0])
+            {
+                trump_dst_addr = true;
+                if (NULL == ptr) trump_dst_port = true;
+            } 
+            else if (WILDCARD != flowInfo[0]) 
+            {
+                SetDstAddr(flowInfo);
+            }
         }
-        // An optional "flowId" can be specified, too
-        if ((flowInfo = strtok(NULL, ",")))
+        else
         {
-            if (WILDCARD != flowInfo[0])
+            if (trump_src_addr && trump_src_port)
+                trump_dst_addr = trump_dst_port = true;
+        }  // end if/else dst addr info was specified
+        
+        // An optional "flowId" can be specified, too
+        if (NULL != (flowInfo = strtok(NULL, ",")))
+        {
+            if (TRUMPCARD == flowInfo[0])
+            {
+                trump_flow_id = true;
+            }
+            else if (WILDCARD != flowInfo[0])
             {
                 unsigned long flowId;
                 if (1 != sscanf(flowInfo, "%lu", &flowId))
@@ -1922,7 +2061,21 @@ bool Flow::InitFromDescription(char* flowInfo)
                 SetFlowId(flowId);
             }
         }
+        else
+        {
+            if (trump_dst_port) trump_flow_id = true;
+        }  // end if/else flowId specified
     }
+    else
+    {
+        // "auto Y" (trump everything, same as "flow X') was specified
+        if (trump_type)
+        {
+            trump_src_addr = trump_src_port = true;
+            trump_dst_addr = trump_dst_port = true;
+            trump_flow_id = true;
+        }
+    }  // end if/else addr info specifed
     return true;
 }  // end Flow::InitFromDescription()
 
@@ -2068,7 +2221,7 @@ int main(int argc, char* argv[])
             i++;
             if (i >= argc)
             {
-                fprintf(stderr, "trpr: Insufficient \"xrange\" arguments!\n");
+                fprintf(stderr, "trpr: Insufficient \"range\" arguments!\n");
                 usage();
                 exit(-1);
             }
@@ -2125,15 +2278,16 @@ int main(int argc, char* argv[])
             // autoscale the y axis
             autoScale = true;
         }
+		// Backwards compatability support
         else if (!strcmp("drec", argv[i]))
         {
             i++;
-            traceFormat = DREC;
+            traceFormat = MGEN;
         }  
         else if (!strcmp("mgen", argv[i]))
         {
             i++;
-            traceFormat = DREC;
+            traceFormat = MGEN;
         }  
         else if (!strcmp("ns", argv[i]))
         {
@@ -2395,7 +2549,7 @@ int main(int argc, char* argv[])
     }   
     
     
-    // If now "flow" or "auto" matching was specified,
+    // If no "flow" or "auto" matching was specified,
     // the default behavior is total wildcard auto matching "auto X" ...
     if (defaultMatching)
     {
@@ -2424,25 +2578,29 @@ int main(int argc, char* argv[])
     {
         case LOSS:
         case LOSS2:  
-            if ((windowSize == 0.0))
+            if (windowSize == 0.0)
             {
                 fprintf(stderr, "trpr: LOSS plots require non-zero window size!\n"); 
                 exit(-1);  
             } 
-            if (DREC != traceFormat)
+            if (TCPDUMP == traceFormat)
+            {
+                fprintf(stderr, "trpr: note tcpdump LOSS plots only for single IPv4 flows!\n");
+            }
+            else if (MGEN != traceFormat)
             {
                 fprintf(stderr, "trpr: LOSS and LATENCY plots currently "
-                                "available for \"drec\" only.\n");
+                                "available for \"mgen\" and \"tcpdump\" ipv4 flows only.\n");
                 exit(-1);
             } 
             break;
                 
         case LATENCY:
         case VELOCITY:
-            if (DREC != traceFormat)
+            if (MGEN != traceFormat)
             {
                 fprintf(stderr, "trpr: LATENCY and VELOCITY plots currently "
-                                "available for \"drec\" only.\n");
+                                "available for \"mgen\" only.\n");
                 exit(-1);
             }
         case INTERARRIVAL:
@@ -2457,9 +2615,9 @@ int main(int argc, char* argv[])
     {
         if (!strcmp(linkSrc, "X")) linkSrc = NULL;
         if (!strcmp(linkDst, "X")) linkDst = NULL;
-        if (DREC == traceFormat)
+        if (MGEN == traceFormat)
         {
-            fprintf(stderr, "trpr: \"link\" tracepoint command not applicable to \"drec\"!\n");
+            fprintf(stderr, "trpr: \"link\" tracepoint command not applicable to \"mgen\"!\n");
             exit(-1);   
         }
         else if (TCPDUMP == traceFormat)
@@ -2545,7 +2703,7 @@ int main(int argc, char* argv[])
     
     bool firstTime = true;
 
-    DrecEventParser drecParser;
+    MgenEventParser mgenParser;
     TcpdumpEventParser tcpdumpParser;
     NsEventParser nsParser;
     EventParser* parser = NULL;
@@ -2554,8 +2712,8 @@ int main(int argc, char* argv[])
         case TCPDUMP:
             parser = &tcpdumpParser;
             break;
-        case DREC:
-            parser = &drecParser;
+        case MGEN:
+            parser = &mgenParser;
             break;
         case NS:
             parser = &nsParser;
@@ -2585,45 +2743,7 @@ int main(int argc, char* argv[])
         unsigned long sequence = theEvent.Sequence();
         unsigned long flowId = theEvent.FlowId();
         
-        if (link.IsValid())
-        {
-            PacketEvent::TracePoint& t = theEvent.Link();
-            if (!link.Match(t)) 
-            {
-                //fprintf(stderr, "link does not match event\n");
-                continue;
-            }
-        }
-        
-        // Does it match our send/recv filter?
-        switch (theEvent.Type())
-        {
-            case PacketEvent::TRANSMISSION:
-                if (0 == (eventMask & SEND)) continue;
-                break;
-                
-            case PacketEvent::RECEPTION:
-                if (0 == (eventMask & RECV)) continue;
-                break;
-            
-	        case PacketEvent::DROP:
-                if (0 == (eventMask & DROP)) continue;
-                break;
-	        
-            case PacketEvent::TIMEOUT:
-                theTime = refTime + lastTime + timeout;
-                break;
-                
-            default:
-                // Other events not yet handled
-                continue;
-         }
-                
-         //fprintf(stderr, "Matched link\n");
-         //theEvent.Link().PrintDescription(stderr);
-         //fprintf(stderr, "\n");
-        
-       // Normalize time to start of data collection
+        // Normalize time to start of data collection
         // (TBD) make normalization optional?
         if (firstTime)
         {
@@ -2662,17 +2782,60 @@ int main(int argc, char* argv[])
             // Handle wrap around midnight
             if ((lastTime - theTime) > (SECONDS_PER_DAY/2.0))
             {
-                fprintf(stderr, "time wrap\n");
+                fprintf(stderr, "trpr warning: time wrap\n");
                 while (lastTime > theTime) 
                     theTime += SECONDS_PER_DAY; 
             }
         }
+        
+        if (link.IsValid())
+        {
+            PacketEvent::TracePoint& t = theEvent.Link();
+            if (!link.Match(t)) 
+            {
+                //fprintf(stderr, "link does not match event\n");
+                continue;
+            }
+        }
+        
+        // Does it match our send/recv filter?
+        switch (theEvent.Type())
+        {
+            case PacketEvent::TRANSMISSION:
+                if (0 == (eventMask & SEND)) continue;
+                break;
+                
+            case PacketEvent::RECEPTION:
+                if (0 == (eventMask & RECV)) continue;
+                break;
+            
+	        case PacketEvent::DROP:
+                if (0 == (eventMask & DROP)) continue;
+                break;
+	        
+            case PacketEvent::TIMEOUT:
+                theTime = lastTime + timeout;
+                break;
+                
+            default:
+                // Other events not yet handled
+                continue;
+         }
+                
+         //fprintf(stderr, "Matched link\n");
+         //theEvent.Link().PrintDescription(stderr);
+         //fprintf(stderr, "\n");
+        
+       
+        
+        //assert(lastTime <= theTime);
         if (lastTime > theTime)
         {
-            fprintf(stderr, "lastTime > theTime error: lastTime>%lf theTime>%lf refTime>%lf\n", lastTime, theTime, refTime);    
-        }        
+            fprintf(stderr, "trpr warning: out-of-order timestamp, adjusting reference time\n");   
+            refTime -= (lastTime - theTime);
+            theTime = lastTime;
+        }  
         
-        assert(lastTime <= theTime);
         if (PacketEvent::TIMEOUT != theEvent.Type())
             lastTime = theTime;
         
@@ -2759,12 +2922,20 @@ int main(int argc, char* argv[])
                         theFlow = new Flow();
                         if (theFlow)
                         {
-                            theFlow->SetType(proto);
-                            theFlow->SetSrcAddr(srcAddr);
-                            theFlow->SetSrcPort(srcPort);
-                            theFlow->SetDstAddr(dstAddr);
-                            theFlow->SetDstPort(dstPort);
-                            theFlow->SetFlowId(flowId);
+                            // Note we leave any "trumped" flow attributes
+                            // as wildcard for matching purposes
+                            if (!nextFlow->TrumpType())
+                                theFlow->SetType(proto);
+                            if (!nextFlow->TrumpSrcAddr())
+                                theFlow->SetSrcAddr(srcAddr);
+                            if (!nextFlow->TrumpSrcPort())
+                                theFlow->SetSrcPort(srcPort);
+                            if (!nextFlow->TrumpDstAddr())
+                                theFlow->SetDstAddr(dstAddr);
+                            if (!nextFlow->TrumpDstPort())
+                                theFlow->SetDstPort(dstPort);
+                            if (!nextFlow->TrumpFlowId())
+                                theFlow->SetFlowId(flowId);
                             flowList.Append(theFlow);
                             
                             if ((LOSS2 == plotMode) || (discardDuplicates))
@@ -3122,6 +3293,10 @@ int main(int argc, char* argv[])
                         // We're done
                         matchPhase = STOP_MATCH;
                         break;
+                    default:
+                        fprintf(stderr, "trpr error: invalid matchPhase!\n");
+                        exit(-1);
+                        break;
                 }
             }
         } // end while(STOP_MATCH != matchPhase)
@@ -3164,8 +3339,6 @@ int main(int argc, char* argv[])
         theEnd = windowStart + windowSize;
     }
     
-    
-
     if ((0.0 != windowSize) && !noEvents) 
     {
         UpdateWindowPlot(plotMode, flowList, outfile, theTime+0.1, 
@@ -3311,7 +3484,7 @@ int main(int argc, char* argv[])
                 break;
                 
             case LATENCY:
-                fprintf(outfile, "set ylabel xx'Latency (sec)'\n");
+                fprintf(outfile, "set ylabel 'Latency (sec)'\n");
                 if (windowSize != 0.0)
                     fprintf(outfile, "set style data lines\n");
                 else
@@ -3328,10 +3501,10 @@ int main(int argc, char* argv[])
                 exit(-1);
         }  // end switch(plotMode)
         
-	if (legend)
-	  fprintf(outfile, "set key bottom right\n");
-	else
-	  fprintf(outfile, "set key off\n");
+	    if (legend)
+	        fprintf(outfile, "set key bottom right\n");
+	    else
+	        fprintf(outfile, "set key off\n");
         double origin = 0.0;
         double scale = 1.0 / ((double)flowList.Count());
         Flow* nextFlow = flowList.Head();
@@ -3347,9 +3520,11 @@ int main(int argc, char* argv[])
                 fprintf(outfile, "plot ");
             }
         }
+        unsigned int flowCount = 0;
         int x = 2;
         while (nextFlow)
         {
+            flowCount++;
             if (multiplot) 
             {
                 fprintf(outfile, "set size 1.0,%f\n", scale);
@@ -3357,8 +3532,8 @@ int main(int argc, char* argv[])
                 fprintf(outfile, "plot ");
                 origin += scale;
             }
-            fprintf(outfile, "\\\n'%s' index 1 using 1:%d t '",
-                              output_file, x++);
+            //fprintf(outfile, "\\\n'%s' using 1:%d t '", output_file, x++);
+            fprintf(outfile, "\\\n'-' t '");
             nextFlow->PrintDescription(outfile);
             fprintf(outfile, "'");
             nextFlow = nextFlow->Next();
@@ -3370,22 +3545,83 @@ int main(int argc, char* argv[])
                     fprintf(outfile, ", ");
             }
         }  // end while(nextFlow)
-        fprintf(outfile, "\nexit\n\n\n");
+        //fprintf(outfile, "\nexit\n\n\n");
+        fprintf(outfile, "\n\n");
         fflush(outfile);
-	
-	    // Append data from temp file to output file
-	    if(!(infile = fopen(temp_file, "r")))
+        
+        // Serialize the data columns in our temp_file, to support
+        // our "portable" gnuplot file format
+        if(!(infile = fopen(temp_file, "r")))
 	    {
 	        perror("trpr: Error opening our temp file");
 	        exit(-1);
 	    }
-	    int result;
-	    char buffer[1024];
-	    while ((result = fread(buffer, sizeof(char), 1024, infile)))
-	    {
-	         fwrite(buffer, sizeof(char), result, outfile);
-	    }
-	    fclose(infile);
+        
+        // On each pass, we pull data from a different column
+        for (unsigned int i = 0 ; i < flowCount; i++)
+        {
+            // Output comment line indicating which flow
+            nextFlow = flowList.Head();
+            for (unsigned int j = 0; j < i; j++) nextFlow = nextFlow->Next();
+            fprintf(outfile, "# Flow: ");
+            nextFlow->PrintDescription(outfile);
+            fprintf(outfile, "\n");
+            rewind(infile);
+            FastReader rdr;
+            char buffer[MAX_LINE];
+            unsigned int len = MAX_LINE;
+            while (FastReader::OK == rdr.Readline(infile, buffer, &len))
+            {
+                // comma delimited data (first field is time, in seconds)
+                char* ptr = strchr(buffer, ',');
+                if (NULL != ptr)
+                {
+                    *ptr++ = '\0';
+                }
+                else
+                {
+                    len = MAX_LINE;
+                    continue;  // empty or blank line
+                }
+                double sec;
+                if (1 != sscanf(buffer, "%lf", &sec))
+                {
+                    perror("trpr: Error serializing temp file: no timestamp?!\n");
+                    len = MAX_LINE;
+                    exit(-1);
+                }
+                // Seek to value for column number i+1
+                unsigned int col = i;
+                while ((0 != col) && (NULL != ptr))
+                {
+                    ptr = strchr(ptr, ',');
+                    if (NULL != ptr) ptr++;
+                    col--;
+                }
+                if (NULL == ptr)
+                {
+                    // No data for desired column on this line?
+                    len = MAX_LINE;
+                    continue;
+                }
+                char* valPtr = ptr;
+                if (NULL != (ptr = strchr(ptr, ',')))
+                     *ptr++ = '\0';
+                double value;
+                if (1 != sscanf(valPtr, "%lf", &value))
+                {
+                    perror("trpr: Error serializing temp file: invalid value?!\n");
+                    len = MAX_LINE;
+                    exit(-1);
+                }
+                // Output "<time>, <value>"
+                fprintf(outfile, "%lf, %lf\n", sec, value);
+                len = MAX_LINE;
+            }
+            fprintf(outfile, "e\n");  // print gnuplot end of data 'e'
+        }
+        
+        fclose(infile);
         unlink(temp_file);
 	    fclose(outfile);
     }  // end if (output_file && use_gnuplot)
@@ -3469,7 +3705,7 @@ int main(int argc, char* argv[])
                 }
             }
             
-            fprintf(stdout, "#flow>", type, units);
+            fprintf(stdout, "#flow>");
             nextFlow->PrintDescription(stdout);            
             fprintf(stdout, ", %s(%s), ", type, units);
             fprintf(stdout, "ave>%lf, ", fave); 
@@ -3747,7 +3983,7 @@ bool NsEventParser::GetNextPacketEvent(FILE*        inFile,
     return true;   
 }  // end NsEventParser::GetNextPacketEvent()
 
-bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, double timeout)
+bool MgenEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, double timeout)
 {    
     while (1)
     {
@@ -3775,7 +4011,7 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
         {
             PacketEvent::EventType eventType = PacketEvent::INVALID;
             bool mgen4 = false;
-            if (!strncmp(buffer, "Flow", 4)) // DREC version 3.3 RECV event
+            if (!strncmp(buffer, "Flow", 4)) // mgen version 3.3 RECV event
             {
                 //fprintf(stderr, "read: %s\n", buffer);
                 if (11 != sscanf(buffer,"Flow>%lu Seq>%lu Src>%s Dest>%s TxTime>%u:%u:%lf "
@@ -3783,7 +4019,7 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
                                         &flow, &seq, src, dst, &TxHrs, &TxMin, &TxSec,
                                         &RxHrs,&RxMin,&RxSec,&pktSize))
                 {
-                    fprintf(stderr, "trpr: Invalid DREC output: \"%s\"\n", buffer);
+                    fprintf(stderr, "trpr: Invalid mgen output: \"%s\"\n", buffer);
                     continue;
                 }
                 eventType = PacketEvent::RECEPTION;
@@ -3813,8 +4049,10 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
             {
                 mgen4 = true;
 		        // MGEN version 4.2b8 and above
-                if (9 != sscanf(buffer, "%u:%u:%lf SEND proto>%s flow>%lu seq>%lu src>%s dst>%s size>%lu",
-				                        &TxHrs,&TxMin,&TxSec, proto, &flow, &seq, sendSrcPort, dst, &pktSize))
+                if ((9 != sscanf(buffer, "%u:%u:%lf SEND proto>%s flow>%lu seq>%lu srcPort>%s dst>%s size>%lu",
+				                        &TxHrs,&TxMin,&TxSec, proto, &flow, &seq, sendSrcPort, dst, &pktSize)) && 
+                    (9 != sscanf(buffer, "%u:%u:%lf SEND proto>%s flow>%lu seq>%lu src>%s dst>%s size>%lu",
+				                        &TxHrs,&TxMin,&TxSec, proto, &flow, &seq, sendSrcPort, dst, &pktSize)))
                 {
 		            // MGEN version 4.2b7 and below
 		            if (7 != sscanf(buffer, "%u:%u:%lf SEND flow>%lu seq>%lu dst>%s size>%lu",
@@ -3830,7 +4068,7 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
                 RxSec = TxSec;
                 strcpy(src, "0.0.0.0/0");
             }
-            else                            // not a DREC event
+            else                            // not a mgen event
             {
                 continue; 
             } 
@@ -3871,7 +4109,7 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
                     double x, y;
                     if (2 != sscanf(ptr, "CURRENT,%lf,%lf", &y, &x))
                     {
-                        fprintf(stderr, "trpr: DrecEventParser::GetNextPacketEvent() Bad GPS info!\n");   
+                        fprintf(stderr, "trpr: mgenEventParser::GetNextPacketEvent() Bad GPS info!\n");   
                         theEvent->SetPosition(999.0, 999.0);
                     }
                     else
@@ -3884,7 +4122,7 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
                     double x,y;
                     if (2 != sscanf(ptr, "CURRENT Long>%lf Lat>%lf\n", &x, &y))
                     {
-                        fprintf(stderr, "trpr: DrecEventParser::GetNextPacketEvent() Bad GPS info!\n");   
+                        fprintf(stderr, "trpr: mgenEventParser::GetNextPacketEvent() Bad GPS info!\n");   
                         theEvent->SetPosition(999.0, 999.0);
                     }
                     else
@@ -3899,7 +4137,10 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
             }
 
             theEvent->SetType(eventType);
-            theEvent->SetProtocol("mgen");
+	    if (mgen4)
+	      theEvent->SetProtocol(proto);
+	    else
+	      theEvent->SetProtocol("mgen");
             double rxTime = (((double)RxHrs) * 3600.0) + (((double)RxMin) * 60.0) + (double)RxSec;
             theEvent->SetTime(rxTime);
             theEvent->SetRxTime(rxTime);
@@ -3915,7 +4156,7 @@ bool DrecEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
         }  // end if (len)
     }  // end while (1)
     return true;
-}  // end DrecEventParser::GetNextPacketEvent()
+}  // end mgenEventParser::GetNextPacketEvent()
 
 // Should handle IPv4 and IPv6 events...
 bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile, 
@@ -3938,19 +4179,54 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                 return true;  
         }
 
+        char pname[32], esrc[32], edst[32];
+        pname[0] = pname[31] = '\0';
+        esrc[0] = esrc[31] = '\0';
+        edst[0] = edst[31] = '\0';
+        bool enet = false;
         // Look for leading tcpdump hex output content line
         if (len && !isspace(buffer[0]))//(' ' != buffer[0]) && '\t' != buffer[0])
         {
+            // Get time, protocol name (pname), and pktSize from header line
             unsigned int hrs, min;
-            float sec;            
-            if (3 != sscanf(buffer, "%u:%u:%f", &hrs, &min, &sec))
+            float sec;  
+            // Here we look to see if tcpdump was run with "-e" option 
+            if (5 == sscanf(buffer, "%u:%u:%f %31s > %31s", &hrs, &min, &sec, esrc, edst))
+            {
+                /*
+                char* ptr = strstr(buffer, "ethertype");
+                if ((NULL == ptr))// || (1 != sscanf(ptr, "ethertype %31s", pname)))
+                {
+                    fprintf(stderr, "trpr: Invalid tcpdump -e output: \"%s\"\n", buffer);
+                    len = MAX_LINE;
+                    continue;
+                }
+                */
+                char* comma = strchr(edst, ',');
+                if (NULL != comma) *comma = '\0';        
+                        
+                strcpy(pname, "ether");
+                enet = true;
+            }        
+            else if (4 != sscanf(buffer, "%u:%u:%f %31s", &hrs, &min, &sec, pname))
             {
                 fprintf(stderr, "trpr: Invalid tcpdump output: \"%s\"\n", buffer);
                 len = MAX_LINE;
                 continue;
             }
+            char* comma = strchr(pname, ',');
+            if (NULL != comma) *comma = '\0';
             
-            // Read in first line of tcpdump hex to get packet length
+            // First, try to get pktSize from header line
+            unsigned int pktSize = 0;
+            char* ptr = strstr(buffer, "length");
+            if (NULL != ptr)
+            {
+                if (1 != sscanf(ptr, "length %u", &pktSize))
+                    pktSize = 0;
+            }
+            
+            // Now read in first line of tcpdump hex to get packet length
             len = MAX_LINE;
             switch (reader.Readline(inFile, buffer, &len, timeout))
             {
@@ -3966,7 +4242,9 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
             
             char headerBuffer[44];
             unsigned int byteCount = PackHexLine(buffer, headerBuffer, 44);
-            unsigned int pktSize = TotalLength(headerBuffer);
+            // Parse hex dump for packet size if we didn't determine it previously
+            if (0 == pktSize)
+                pktSize = TotalLength(headerBuffer, pname);
             unsigned int maxBytes = MIN(44, pktSize);
             while (byteCount < maxBytes)
             {
@@ -3991,10 +4269,40 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
 
             
             // Fill in values read from tcpdump line
-            unsigned char protocol = Protocol(headerBuffer);
-            theEvent->SetProtocol(ProtocolType(protocol));
-            theEvent->SetSrcAddr(SourceAddress(headerBuffer));
-            theEvent->SetDstAddr(DestinationAddress(headerBuffer));
+            unsigned char protocol = 255;
+            unsigned long seq = 0;
+            if (enet)
+            {
+                theEvent->SetProtocol("ether");
+            }
+            else if (0 == strncmp("IP", pname, 2))
+            {
+                protocol = Protocol(headerBuffer);
+                theEvent->SetProtocol(ProtocolType(protocol));
+                seq = Sequence(headerBuffer);
+                
+            }
+            else if (0 == strncmp("ARP", pname, 3))
+            {
+                theEvent->SetProtocol("arp");
+            }
+            else
+            {
+                theEvent->SetProtocol(pname);
+            }
+            if (enet)
+            {
+                theEvent->SetSrcAddr(Address(esrc));
+                theEvent->SetDstAddr(Address(edst));
+            }
+            else
+            {
+                theEvent->SetSrcAddr(SourceAddress(headerBuffer, pname));
+                theEvent->SetDstAddr(DestinationAddress(headerBuffer, pname));
+            }
+            
+            theEvent->SetSequence(seq);
+            
             switch (protocol)
             {
                 case 6:   // TCP
@@ -4008,6 +4316,7 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                     theEvent->SetDstPort(0);
                     break;
             }      
+            
             theEvent->SetSize(pktSize); 
             double theTime = (((double)hrs) * 3600.0) +
                              (((double)min) * 60.0) +
@@ -4035,7 +4344,10 @@ const char* TcpdumpEventParser::ProtocolType(unsigned char value) const
             return "icmp";
 
         case 58:
-	    return "icmp";
+	        return "icmp6";
+
+        case 89:
+	        return "ospf";
             
         default:
             sprintf(type, "%u", value);
@@ -4567,7 +4879,7 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
 		  fprintf(stdout, "set yrange[%f:",min);
 
 		if (max < 0.0)
-		  fprintf(stdout, "*]\n",max);
+		  fprintf(stdout, "*]\n");
 		else 
 		  fprintf(stdout, "%f]\n",max);
                 break;
@@ -4616,11 +4928,13 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
                     case LATENCY:
                     case INTERARRIVAL:
                     case VELOCITY:
+                    case COUNT:
                         value = 0.0;
                         break;
 
                     case LOSS:
                     case LOSS2: 
+                    case DROPS:
                         value = 1.0;
                          break;
                 }
@@ -4748,7 +5062,7 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		  fprintf(stdout, "set yrange[%f:",min);
 
 		if (max < 0.0)
-		  fprintf(stdout, "*]\n",max);
+		  fprintf(stdout, "*]\n");
 		else 
 		  fprintf(stdout, "%f]\n",max);
                 break;

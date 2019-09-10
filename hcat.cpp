@@ -500,7 +500,7 @@ int main(int argc, char* argv[])
             }
             len = MAX_LINE;
             double value;
-            unsigned int count;
+            unsigned long count;
             
             int result = sscanf(buffer, "%lf, %lu", &value, &count);
             if (1 == result)
