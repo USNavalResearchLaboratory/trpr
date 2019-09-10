@@ -58,14 +58,14 @@ inline int isnan(double x) {return _isnan(x);}
 #include <arpa/inet.h>
 #endif // !WIN32
 
-#define VERSION "2.1b7"
+#define VERSION "2.1b10"
 
 #ifndef MIN
 #define MIN(X,Y) ((X<Y)?X:Y)
 #define MAX(X,Y) ((X>Y)?X:Y)
 #endif // !MIN
 
-const int MAX_LINE = 1024;
+const int MAX_LINE = 4096;
 
 enum TraceFormat {TCPDUMP, MGEN, NS};
 enum PlotMode {RATE, INTERARRIVAL, LATENCY, DROPS, LOSS, LOSS2, COUNT, VELOCITY};
@@ -239,7 +239,6 @@ class PacketEvent
         PacketEvent();
         ~PacketEvent();
         
-        
         // Generalized tracepoint node(a,[b]) NS
         class TracePoint
         {
@@ -332,8 +331,9 @@ class PacketEvent
         void SetTxTime(double theTime) {tx_time = theTime;}
         unsigned long Sequence() {return sequence;}
         void SetSequence(unsigned long theSequence) {sequence = theSequence;}    
-        unsigned long FlowId() {return flow_id.Value();}
+        unsigned long GetFlowIdValue() {return flow_id.Value();}
         void SetFlowId(unsigned long id) {flow_id = id;}
+        void InvalidateFlowId() {flow_id.Invalidate();}
         void SetPosition(double x, double y) {pos_x = x; pos_y = y;}
         double PosX() {return pos_x;}
         double PosY() {return pos_y;}
@@ -402,7 +402,7 @@ bool PacketEvent::TracePoint::Match(const TracePoint& p) const
         (!dst_addr.IsValid() || dst_addr == p.DstAddr()) &&
         ((-1 == dst_port) || (dst_port == p.DstPort())))
     {
-        fprintf(stderr, "");
+        //fprintf(stderr, "");
         return true;
     }
     else
@@ -499,7 +499,6 @@ class TcpdumpEventParser : public EventParser
                 return 0;
             }
         }
-        
         
         const char* ProtocolType(unsigned char value) const;
                 
@@ -815,7 +814,7 @@ class LossTracker3
         double LossWindowEnd() {return time_last;}
         double LossFraction(); 
     
-        enum {HISTORY_MAX = 32};
+        enum {HISTORY_MAX = 4096};
     private:
         long SeqDelta(unsigned long a, unsigned long b)
         {
@@ -1177,7 +1176,9 @@ class Flow
         unsigned short DstPort() const {return dst_port;}
         void SetDstPort(unsigned short value) {dst_port = value;}
         void SetFlowId(unsigned long value) {flow_id = value;}
-        unsigned long FlowId() {return flow_id.Value();}
+        void InvalidateFlowId() {flow_id.Invalidate();}
+        const FlowId& GetFlowId() const {return flow_id;}
+        unsigned long GetFlowIdValue() {return flow_id.Value();}
         
         bool IsPreset() {return preset;}
         
@@ -1767,7 +1768,7 @@ Flow::Flow(bool presetFlow)
       // if true, matches for the trumped component(s) are consolidated
       // (i.e, a single flow.  Thus "auto Y,Y,Y" same as "flow X"
       trump_type(false), trump_src_addr(false), trump_src_port(false),
-      trump_dst_addr(false), trump_dst_port(false),
+      trump_dst_addr(false), trump_dst_port(false), trump_flow_id(false),
       byte_count(0), accumulator(0.0), accumulator_count(0),
       last_time(-1.0), pos_x(999.0), pos_y(999.0),
       sum_init(true), sum_total(0.0), sum_var(0.0), 
@@ -1856,6 +1857,8 @@ void Flow::PrintDescription(FILE* f)
         fprintf(f, "*");
     if (flow_id.IsValid())
         fprintf(f, "~%lu", (unsigned long)flow_id);
+    else if (!trump_flow_id)
+        fprintf(f, "~*");
 }  // end Flow::PrintDescription()
 
 bool Flow::AppendData(double x, double y)
@@ -1965,7 +1968,7 @@ inline void usage()
                     "            [link <src>[,<dst>]][send|recv][nodup]\n"
                     "            [range <startSec>[:<stopSec>]][yrange <min>[:<max>]\n"
                     "            [offset <hh:mm:ss>][absolute]\n"
-                    "            [summary][histogram][replay <factor>]\n"
+                    "            [summary][monitor][histogram][replay <factor>]\n"
 					"            [png <pngFile>][post <postFile>][gif <gifFile>][multiplot]\n"
                     "            [surname <titlePrefix>][ramp][scale]\n"
                     "            [nolegend]\n");
@@ -2060,6 +2063,10 @@ bool Flow::InitFromDescription(char* flowInfo)
                 } 
                 SetFlowId(flowId);
             }
+            else
+            {
+                trump_flow_id = false;
+            }
         }
         else
         {
@@ -2114,8 +2121,10 @@ int main(int argc, char* argv[])
     unsigned int detect_proto_len = 0;
     bool normalize = true;
     bool stairStep = true;
+    bool dumb = false;
     bool autoScale = false;
     bool discardDuplicates = false;
+    bool monitor = false;
     
     char* surname = NULL;
     
@@ -2124,6 +2133,8 @@ int main(int argc, char* argv[])
     char* linkDst = NULL;    
     enum EventMask {SEND = 0x01, RECV = 0x02, DROP = 0x04};
     int eventMask = (RECV | DROP);
+    
+    int tempEventMask = 0;  // if user issues "send", "recv", or "drops" command, this gets populated 
     
     if (argc < 2)
     {
@@ -2272,6 +2283,11 @@ int main(int argc, char* argv[])
             i++;
             stairStep = false;
         } 
+        else if (!strncmp("dumb", argv[i], 5))
+        {
+            i++;
+            dumb = true;
+        } 
         else if (!strcmp("scale",argv[i]))
         {
             i++;
@@ -2319,6 +2335,7 @@ int main(int argc, char* argv[])
 	{
 	    i++;
 	    plotMode = DROPS;
+        tempEventMask |= DROP;
 	}
 	else if (!strncmp("loss", argv[i], 5))
         {
@@ -2499,19 +2516,19 @@ int main(int argc, char* argv[])
         else if (!strcmp("send", argv[i]))
         {
             i++;
-            eventMask = SEND;   
+            tempEventMask |= SEND;   
         }  
         else if (!strcmp("recv", argv[i]))
         {
             i++;
-            eventMask = RECV;   
+            tempEventMask |= RECV;   
         }
         else if (!strcmp("offset", argv[i]))
         {
             i++;
             if (i >= argc)
             {
-                fprintf(stderr, "trpr: Insufficient \"exclude\" arguments!\n");
+                fprintf(stderr, "trpr: Insufficient \"offset\" arguments!\n");
                 usage();
                 exit(-1);
             }
@@ -2519,7 +2536,7 @@ int main(int argc, char* argv[])
             float sec;
             if (3 != sscanf(argv[i], "%d:%d:%f", &hour, &min, &sec))
             {
-                fprintf(stderr, "trpr: Error parsing \"exclude\" flow description!\n");
+                fprintf(stderr, "trpr: Error parsing \"offset\" flow description!\n");
                 usage();
                 exit(1);
             }
@@ -2529,6 +2546,11 @@ int main(int argc, char* argv[])
         else if (!strncmp("sum", argv[i], 3))
         {
             summarize = true;  
+            i++; 
+        }            
+        else if (!strncmp("monitor", argv[i], 3))
+        {
+            monitor = true;  
             i++; 
         }         
         else if (!strncmp("histogram", argv[i], 3))
@@ -2548,6 +2570,9 @@ int main(int argc, char* argv[])
         }
     }   
     
+    // Update "eventMask" if the "tempEventMask" was touched
+    if (0 != tempEventMask)
+        eventMask = tempEventMask;
     
     // If no "flow" or "auto" matching was specified,
     // the default behavior is total wildcard auto matching "auto X" ...
@@ -2741,7 +2766,7 @@ int main(int argc, char* argv[])
         double rxTime = theEvent.RxTime();
         double txTime = theEvent.TxTime();
         unsigned long sequence = theEvent.Sequence();
-        unsigned long flowId = theEvent.FlowId();
+        unsigned long flowId = theEvent.GetFlowIdValue();
         
         // Normalize time to start of data collection
         // (TBD) make normalization optional?
@@ -2749,6 +2774,9 @@ int main(int argc, char* argv[])
         {
             // Wait for a real event to get going ..
             if (PacketEvent::TIMEOUT == theEvent.Type()) continue;
+            // TBD - don't use normalize here, but instead re-add the "refTime"
+            // to "theTime" upon output if !normalize.  This change would allow
+            // the "absolute" and "offset" commands to actually work together
             if (normalize)
             {
                 if (offsetTime >= 0.0)
@@ -2802,15 +2830,27 @@ int main(int argc, char* argv[])
         switch (theEvent.Type())
         {
             case PacketEvent::TRANSMISSION:
-                if (0 == (eventMask & SEND)) continue;
+                if (0 == (eventMask & SEND)) 
+                {
+                    theTime = lastTime;  // like it never happened
+                    continue;
+                }
                 break;
                 
             case PacketEvent::RECEPTION:
-                if (0 == (eventMask & RECV)) continue;
+                if (0 == (eventMask & RECV)) 
+                {
+                    theTime = lastTime;  // like it never happened
+                    continue;
+                }
                 break;
             
 	        case PacketEvent::DROP:
-                if (0 == (eventMask & DROP)) continue;
+                if (0 == (eventMask & DROP)) 
+                {
+                    theTime = lastTime;  // like it never happened
+                    continue;
+                }
                 break;
 	        
             case PacketEvent::TIMEOUT:
@@ -2819,6 +2859,7 @@ int main(int argc, char* argv[])
                 
             default:
                 // Other events not yet handled
+                theTime = lastTime;  // like it never happened
                 continue;
          }
                 
@@ -2934,7 +2975,7 @@ int main(int argc, char* argv[])
                                 theFlow->SetDstAddr(dstAddr);
                             if (!nextFlow->TrumpDstPort())
                                 theFlow->SetDstPort(dstPort);
-                            if (!nextFlow->TrumpFlowId())
+                            if (!nextFlow->TrumpFlowId() || nextFlow->GetFlowId().IsValid())
                                 theFlow->SetFlowId(flowId);
                             flowList.Append(theFlow);
                             
@@ -3021,10 +3062,16 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%7.3f", theTime);
+                                        fprintf(outfile, "%f", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %7.3f\n", rate);
+                                        fprintf(outfile, ", %f\n", rate);
+                                    }
+                                    if (monitor)
+                                    {
+                                        fprintf(stdout, "%lf, ", theTime);
+                                        theFlow->PrintDescription(stdout);
+                                        fprintf(stdout, ", %f\n", rate);
                                     }
                                 }    
                             }                            
@@ -3073,15 +3120,21 @@ int main(int argc, char* argv[])
                                     if (outfile)
                                     {
                                         // Window start
-                                        fprintf(outfile, "%7.3f", theFlow->LossWindowStart2());
+                                        fprintf(outfile, "%f", theFlow->LossWindowStart2());
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %7.3f\n", lossFraction);
+                                        fprintf(outfile, ", %f\n", lossFraction);
                                         // Window end
-                                        fprintf(outfile, "%7.3f", theTime);
+                                        fprintf(outfile, "%f", theTime);
                                         n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %7.3f\n", lossFraction);
+                                        fprintf(outfile, ", %f\n", lossFraction);
+                                    }
+                                    if (monitor)
+                                    {
+                                        fprintf(stdout, "%lf, ", theTime);
+                                        theFlow->PrintDescription(stdout);
+                                        fprintf(stdout, ", %f\n", lossFraction);
                                     }
                                     theFlow->ResetLossTracker2();
                                     break;
@@ -3122,10 +3175,15 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%7.3f", theTime);
+                                        fprintf(outfile, "%f", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %7.3f\n", 1.0);
+                                        fprintf(outfile, ", %f\n", 1.0);
+                                    }
+                                    if (monitor)
+                                    {
+                                        theFlow->PrintDescription(stdout);
+                                        fprintf(stdout, " drop\n");
                                     }
                                 }
 			                }
@@ -3156,10 +3214,15 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%7.3f", theTime);
+                                        fprintf(outfile, "%f", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %7.3f\n", 1.0);
+                                        fprintf(outfile, ", %f\n", 1.0);
+                                    }
+                                    if (monitor)
+                                    {
+                                        theFlow->PrintDescription(stdout);
+                                        fprintf(stdout, " packet\n");
                                     }
                                 }
 			                }
@@ -3188,10 +3251,15 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%7.3f", theTime);
+                                        fprintf(outfile, "%f", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %7.3f\n", delay);
+                                        fprintf(outfile, ", %f\n", delay);
+                                    }
+                                    if (monitor)
+                                    {
+                                        theFlow->PrintDescription(stdout);
+                                        fprintf(outfile, " %f\n", delay);
                                     }
                                     
                                 }
@@ -3221,10 +3289,15 @@ int main(int argc, char* argv[])
                                 }
                                 if (outfile)
                                 {
-                                    fprintf(outfile, "%7.3f", theTime);
+                                    fprintf(outfile, "%f", theTime);
                                     unsigned int n = flowNumber;
                                     while (--n) fprintf(outfile, ", ");
-                                    fprintf(outfile, ", %7.3f\n", delay);
+                                    fprintf(outfile, ", %f\n", delay);
+                                }
+                                if (monitor)
+                                {
+                                    theFlow->PrintDescription(stdout);
+                                    fprintf(stdout, " %f\n", delay);
                                 }
                             }
                             break;
@@ -3254,10 +3327,15 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%7.3f", theTime);
+                                        fprintf(outfile, "%f", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
                                         fprintf(outfile, ", %7.3e\n", velocity);
+                                    }
+                                    if (monitor)
+                                    {
+                                        theFlow->PrintDescription(stdout);
+                                        fprintf(outfile, " %f\n", velocity);
                                     }
                                 }
                             }
@@ -3341,8 +3419,8 @@ int main(int argc, char* argv[])
     
     if ((0.0 != windowSize) && !noEvents) 
     {
-        UpdateWindowPlot(plotMode, flowList, outfile, theTime+0.1, 
-                         theStart, theEnd, realTime, stairStep); 
+        //fprintf(stderr, "TRPR Updating final window theStart:%lf theEnd:%lf theTime:%lf\n", theStart, theEnd, theTime);
+        UpdateWindowPlot(plotMode, flowList, outfile, theTime+0.1, theStart, theEnd, realTime, stairStep); 
     } 
 
     if (LOSS2 == plotMode)
@@ -3372,12 +3450,12 @@ int main(int argc, char* argv[])
             if (outfile)
             {
                 // Window start
-                fprintf(outfile, "%7.3f", nextFlow->LossWindowStart2());
+                fprintf(outfile, "%f", nextFlow->LossWindowStart2());
                 unsigned int n = flowNumber;
                 while (--n) fprintf(outfile, ", ");
                 fprintf(outfile, ", %7.3e\n", lossFraction);
                 // Window end
-                fprintf(outfile, "%7.3f", nextFlow->LossWindowEnd2());
+                fprintf(outfile, "%f", nextFlow->LossWindowEnd2());
                 n = flowNumber;
                 while (--n) fprintf(outfile, ", ");
                 fprintf(outfile, ", %7.3e\n", lossFraction);
@@ -3423,6 +3501,8 @@ int main(int argc, char* argv[])
         if (!multiplot)
             fprintf(outfile, "set title '%s %s'\n", 
                        surname? surname : "", output_file);
+        if (dumb)
+	  fprintf(outfile, "set terminal dumb\n"); 
         fprintf(outfile, "set xlabel 'Time (sec)'\n");
         double min = 0.0, max = 0.0;
         switch (plotMode)
@@ -3473,6 +3553,13 @@ int main(int argc, char* argv[])
                     fprintf(outfile, "set style data lines\n");
                 else
                     fprintf(outfile, "set style data points\n");
+                if ((minYRange != -1.0) || (maxYRange != -1.0))
+                {
+                    if (maxYRange != -1.0)
+                        fprintf(outfile, "set yrange[%f:%f]\n",minYRange,maxYRange);
+                    else
+                        fprintf(outfile, "set yrange[%f:*]\n",minYRange);
+                }
                 break;
 	        
             case INTERARRIVAL:
@@ -3481,6 +3568,13 @@ int main(int argc, char* argv[])
                     fprintf(outfile, "set style data lines\n");
                 else
                     fprintf(outfile, "set style data points\n");
+                if ((minYRange != -1.0) || (maxYRange != -1.0))
+                {
+                    if (maxYRange != -1.0)
+                        fprintf(outfile, "set yrange[%f:%f]\n",minYRange,maxYRange);
+                    else
+                        fprintf(outfile, "set yrange[%f:*]\n",minYRange);
+                }
                 break;
                 
             case LATENCY:
@@ -3489,6 +3583,13 @@ int main(int argc, char* argv[])
                     fprintf(outfile, "set style data lines\n");
                 else
                     fprintf(outfile, "set style data points\n");
+                if ((minYRange != -1.0) || (maxYRange != -1.0))
+                {
+                    if (maxYRange != -1.0)
+                        fprintf(outfile, "set yrange[%f:%f]\n",minYRange,maxYRange);
+                    else
+                        fprintf(outfile, "set yrange[%f:*]\n",minYRange);
+                }
                 break;
                 
             case VELOCITY:            
@@ -3531,9 +3632,12 @@ int main(int argc, char* argv[])
                 fprintf(outfile, "set origin 0.0,%f\n", origin);
                 fprintf(outfile, "plot ");
                 origin += scale;
+                fprintf(outfile, "\\\n'%s' using 1:%d t '", output_file, x++);
             }
-            //fprintf(outfile, "\\\n'%s' using 1:%d t '", output_file, x++);
-            fprintf(outfile, "\\\n'-' t '");
+            else
+            {
+                fprintf(outfile, "\\\n'-' t '");
+            }
             nextFlow->PrintDescription(outfile);
             fprintf(outfile, "'");
             nextFlow = nextFlow->Next();
@@ -3545,81 +3649,98 @@ int main(int argc, char* argv[])
                     fprintf(outfile, ", ");
             }
         }  // end while(nextFlow)
-        //fprintf(outfile, "\nexit\n\n\n");
+        
+        if (multiplot)
+            fprintf(outfile, "\nexit\n\n\n");
+        
         fprintf(outfile, "\n\n");
         fflush(outfile);
         
-        // Serialize the data columns in our temp_file, to support
-        // our "portable" gnuplot file format
         if(!(infile = fopen(temp_file, "r")))
 	    {
 	        perror("trpr: Error opening our temp file");
 	        exit(-1);
 	    }
         
-        // On each pass, we pull data from a different column
-        for (unsigned int i = 0 ; i < flowCount; i++)
+        if (multiplot)
         {
-            // Output comment line indicating which flow
-            nextFlow = flowList.Head();
-            for (unsigned int j = 0; j < i; j++) nextFlow = nextFlow->Next();
-            fprintf(outfile, "# Flow: ");
-            nextFlow->PrintDescription(outfile);
-            fprintf(outfile, "\n");
-            rewind(infile);
-            FastReader rdr;
-            char buffer[MAX_LINE];
-            unsigned int len = MAX_LINE;
-            while (FastReader::OK == rdr.Readline(infile, buffer, &len))
-            {
-                // comma delimited data (first field is time, in seconds)
-                char* ptr = strchr(buffer, ',');
-                if (NULL != ptr)
-                {
-                    *ptr++ = '\0';
-                }
-                else
-                {
-                    len = MAX_LINE;
-                    continue;  // empty or blank line
-                }
-                double sec;
-                if (1 != sscanf(buffer, "%lf", &sec))
-                {
-                    perror("trpr: Error serializing temp file: no timestamp?!\n");
-                    len = MAX_LINE;
-                    exit(-1);
-                }
-                // Seek to value for column number i+1
-                unsigned int col = i;
-                while ((0 != col) && (NULL != ptr))
-                {
-                    ptr = strchr(ptr, ',');
-                    if (NULL != ptr) ptr++;
-                    col--;
-                }
-                if (NULL == ptr)
-                {
-                    // No data for desired column on this line?
-                    len = MAX_LINE;
-                    continue;
-                }
-                char* valPtr = ptr;
-                if (NULL != (ptr = strchr(ptr, ',')))
-                     *ptr++ = '\0';
-                double value;
-                if (1 != sscanf(valPtr, "%lf", &value))
-                {
-                    perror("trpr: Error serializing temp file: invalid value?!\n");
-                    len = MAX_LINE;
-                    exit(-1);
-                }
-                // Output "<time>, <value>"
-                fprintf(outfile, "%lf, %lf\n", sec, value);
-                len = MAX_LINE;
-            }
-            fprintf(outfile, "e\n");  // print gnuplot end of data 'e'
+            // Append data from temp file to output file
+            int result;
+            char buffer[1024];
+            while ((result = fread(buffer, sizeof(char), 1024, infile)))
+                fwrite(buffer, sizeof(char), result, outfile);
         }
+        else
+        {
+            // Serialize the data columns in our temp_file, to support
+            // a "portable" gnuplot file format
+            // On each pass, we pull data from a different column
+            for (unsigned int i = 0 ; i < flowCount; i++)
+            {
+                // Output comment line indicating which flow
+                nextFlow = flowList.Head();
+                for (unsigned int j = 0; j < i; j++) nextFlow = nextFlow->Next();
+                fprintf(outfile, "# Flow: ");
+                nextFlow->PrintDescription(outfile);
+                fprintf(outfile, "\n");
+                rewind(infile);
+                FastReader rdr;
+                char buffer[MAX_LINE];
+                unsigned int len = MAX_LINE;
+                while (FastReader::OK == rdr.Readline(infile, buffer, &len))
+                {
+                    // comma delimited data (first field is time, in seconds)
+                    char* ptr = strchr(buffer, ',');
+                    if (NULL != ptr)
+                    {
+                        *ptr = '\0';
+                    }
+                    else
+                    {
+                        len = MAX_LINE;
+                        continue;  // empty or blank line
+                    }
+                    double sec;
+                    if (1 != sscanf(buffer, "%lf", &sec))
+                    {
+                        perror("trpr: Error serializing temp file: no timestamp?!\n");
+                        len = MAX_LINE;
+                        exit(-1);
+                    }
+                    ptr++;
+                    // Seek to value for column number i+1
+                    unsigned int col = i;
+                    //fprintf(stderr, "seeking to column %d\n", i+1);
+                    while ((0 != col) && (NULL != ptr))
+                    {
+                        ptr = strchr(ptr, ',');
+                        if (NULL != ptr) ptr++;
+                        col--;
+                    }
+                    if (NULL == ptr)
+                    {
+                        // No data for desired column on this line?
+                        len = MAX_LINE;
+                        continue;
+                    }
+                    char* valPtr = ptr;
+                    if (NULL != (ptr = strchr(ptr, ',')))
+                        *ptr = '\0';
+                    double value;
+                    if (1 != sscanf(valPtr, "%lf", &value))
+                    {
+                        //fprintf(stderr, "trpr: Error serializing temp file: invalid value?! (buffer: %s)\n", buffer);
+                        len = MAX_LINE;
+                        continue;
+                        //exit(-1);
+                    }
+                    // Output "<time>, <value>"
+                    fprintf(outfile, "%lf, %lf\n", sec, value);
+                    len = MAX_LINE;
+                }
+                fprintf(outfile, "e\n");  // print gnuplot end of data 'e'
+            }
+        }  // end if/else multiplot
         
         fclose(infile);
         unlink(temp_file);
@@ -4137,10 +4258,10 @@ bool MgenEventParser::GetNextPacketEvent(FILE* inFile, PacketEvent* theEvent, do
             }
 
             theEvent->SetType(eventType);
-	    if (mgen4)
-	      theEvent->SetProtocol(proto);
-	    else
-	      theEvent->SetProtocol("mgen");
+	        if (mgen4)
+	          theEvent->SetProtocol(proto);
+	        else
+	          theEvent->SetProtocol("mgen");
             double rxTime = (((double)RxHrs) * 3600.0) + (((double)RxMin) * 60.0) + (double)RxSec;
             theEvent->SetTime(rxTime);
             theEvent->SetRxTime(rxTime);
@@ -4226,6 +4347,7 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                     pktSize = 0;
             }
             
+            
             // Now read in first line of tcpdump hex to get packet length
             len = MAX_LINE;
             switch (reader.Readline(inFile, buffer, &len, timeout))
@@ -4239,11 +4361,11 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                     theEvent->SetType(PacketEvent::TIMEOUT);
                     return true;  
             }
-            
             char headerBuffer[44];
             unsigned int byteCount = PackHexLine(buffer, headerBuffer, 44);
             // Parse hex dump for packet size if we didn't determine it previously
-            if (0 == pktSize)
+            // or always if it's an IP packet so we don't just have payload size!
+            if ((0 == strncmp(pname, "IP", 2))|| (0 == pktSize) || (0 == strncmp(pname, "ARP", 3)))
                 pktSize = TotalLength(headerBuffer, pname);
             unsigned int maxBytes = MIN(44, pktSize);
             while (byteCount < maxBytes)
@@ -4259,14 +4381,13 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                     case FastReader::TIMEOUT:
                         theEvent->SetType(PacketEvent::TIMEOUT);
                         return true;  
-                }                
+                }      
                 unsigned long remainder = maxBytes - byteCount;
                 if (remainder > 1)
                     byteCount += PackHexLine(buffer, headerBuffer+byteCount, maxBytes - byteCount);
                 else
                     break;
             }  // end while(byteCount < maxBytes)
-
             
             // Fill in values read from tcpdump line
             unsigned char protocol = 255;
@@ -4323,7 +4444,8 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                              (double)sec;
             theEvent->SetTime(theTime);
             theEvent->SetType(PacketEvent::RECEPTION);
-            return true;
+            theEvent->InvalidateFlowId();
+            break;
         }
     }  // end while(1)
     return true;
@@ -4585,7 +4707,7 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
             {
                 // Plot window start point (also prune/add "realTime" data for all flows)
                 Flow* nextFlow = flowList.Head();
-                if (outfile) fprintf(outfile, "%7.3f", windowStart);
+                if (outfile) fprintf(outfile, "%f", windowStart);
                 while (nextFlow)
                 {
                     double value;
@@ -4640,7 +4762,7 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
             }  // end if (stairStep)
             
             // Window end point
-            if (outfile) fprintf(outfile, "%7.3f", windowEnd);
+            if (outfile) fprintf(outfile, "%f", windowEnd);
             Flow* nextFlow = flowList.Head();
             unsigned int flowCount = 0;
             while (nextFlow)
@@ -4718,12 +4840,12 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
                 {
                     if (stairStep)
                     {
-                        fprintf(outfile, "%7.3f", windowEnd); 
+                        fprintf(outfile, "%f", windowEnd); 
                         for (unsigned int i = 0; i < flowCount; i++) 
                             fprintf(outfile, ", %7.3e", value);
                         fprintf(outfile, "\n");
                     }
-                    fprintf(outfile, "%7.3f", (tempEnd - windowSize)); 
+                    fprintf(outfile, "%f", (tempEnd - windowSize)); 
                     for (unsigned int i = 0; i < flowCount; i++) 
                         fprintf(outfile, ", %7.3e", value);
                     fprintf(outfile, "\n");

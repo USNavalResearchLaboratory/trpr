@@ -14,7 +14,7 @@
 
     <abstract>
       <para>The TRace Plot Real-time (TRPR) is open source software by the
-      <ulink url="http://www.nrl.navy.mil/">Naval Research Laboratory</ulink>
+      <ulink url="https://www.nrl.navy.mil/">Naval Research Laboratory</ulink>
       (NRL) PROTocol Engineering Advanced Networking (PROTEAN) group that
       analyzes output from the <emphasis>tcpdump</emphasis> packet sniffing
       program and creates output suitable for plotting. It also specifically
@@ -32,11 +32,11 @@
       <emphasis>tcpdump</emphasis> are supported. <emphasis>Trpr</emphasis>
       can also perform the same functions with <emphasis>mgen</emphasis> log
       files (See <ulink
-      url="http://cs.itd.nrl.navy.mil/work/mgen/">http://cs.itd.nrl.navy.mil/work/mgen/</ulink>
+      url="https://www.nrl.navy.mil/itd/ncs/products/mgen">https://www.nrl.navy.mil/itd/ncs/products/mgen</ulink>
       for more information on <emphasis>mgen</emphasis> and the MGEN test tool
       set) and <emphasis>ns-2</emphasis> (Berkeley's network simulator - see
       <ulink
-      url="http://www.isi.edu/nsnam/ns/">http://www.isi.edu/nsnam/ns</ulink> )
+      url="https://www.isi.edu/nsnam/ns/">https://www.isi.edu/nsnam/ns</ulink> )
       trace files.</para>
 
       <para>By default, <emphasis>trpr</emphasis> creates a "data rate" versus
@@ -81,7 +81,7 @@
     <title>Downloads</title>
 
     <para>The <emphasis>trpr</emphasis> package is available at <ulink
-    url="http://downloads.pf.itd.nrl.navy.mil/proteantools/">http://downloads.pf.itd.nrl.navy.mil/proteantools</ulink></para>
+    url="https://downloads.pf.itd.nrl.navy.mil/proteantools/">https://downloads.pf.itd.nrl.navy.mil/proteantools</ulink></para>
 
     <para><emphasis>Tcpdump</emphasis> can be found at <ulink
     url="http://ee.lbl.gov/">http://ee.lbl.gov/ </ulink></para>
@@ -91,11 +91,11 @@
     url="http://www.gnuplot.info/">http://www.gnuplot.info/</ulink></para>
 
     <para>The <emphasis>MGEN</emphasis> web site is <ulink
-    url="http://cs.itd.nrl.navy.mil/work/mgen/">http://cs.itd.nrl.navy.mil/work/mgen/
+    url="https://www.nrl.navy.mil/itd/ncs/products/mgen">https://www.nrl.navy.mil/itd/ncs/products/mgen
     </ulink></para>
 
     <para>The <emphasis>ns</emphasis> web site is <ulink
-    url="http://www.isi.edu/nsnam/ns/">http://www.isi.edu/nsnam/ns</ulink></para>
+    url="https://www.isi.edu/nsnam/ns/">https://www.isi.edu/nsnam/ns</ulink></para>
   </sect1>
 
   <sect1 id="Build">
@@ -531,14 +531,14 @@
 
             <row>
               <entry><literal>auto
-              &lt;type,srcAddr:port,dstAddr:port,id&gt;</literal></entry>
+              &lt;type,srcAddr/port,dstAddr/port,id&gt;</literal></entry>
 
               <entry>This command instructs <emphasis>trpr</emphasis> to
               automatically discover, enumerate, and plot "flows" of network
               data according to the matching (type,src,dst,id) criteria
               provided. Otherwise, <emphasis>trpr</emphasis> only plots
               "flows" given by the flow option described below. Valid values
-              for &lt;type&gt; include "X", "Y", "udp", "tcp", "ospf", "arp"
+              for &lt;type&gt; include "X", "Y", "UDP", "TCP", "ospf", "arp"
               or the numeric value of the IP protocol type of interest. The
               "X" value "wildcards" the &lt;type&gt; so that
               <emphasis>trpr</emphasis> will automatically create a plot on
@@ -582,7 +582,7 @@
 
             <row>
               <entry><literal>flow
-              &lt;type,srcAddr:port,dstAddr:port,id&gt;</literal></entry>
+              &lt;type,srcAddr/port,dstAddr/port,id&gt;</literal></entry>
 
               <entry>This command instructs trpr to look for and plot specific
               "flows" which match the given (type,src,dst) criteria. All flows
@@ -594,7 +594,7 @@
               For example, the option "flow udp" will cause trpr to accumulate
               all detected UDP traffic (regardless of source and destination
               since they are implicitly wildcarded here) into a single plot.
-              Thus the command "<emphasis>trpr</emphasis> flow udp flow tcp
+              Thus the command "<emphasis>trpr</emphasis> flow UDP flow TCP
               ..." will produce a graph with two lines, one plotting
               cumulative UDP traffic and the other plotting cumulative TCP
               traffic detected by <emphasis>tcpdump</emphasis>. As with the
@@ -609,7 +609,7 @@
 
             <row>
               <entry><literal>exclude
-              &lt;type,srcAddr:port,dstAddr:port,id&gt;</literal></entry>
+              &lt;type,srcAddr/port,dstAddr/port,id&gt;</literal></entry>
 
               <entry>This command instructs <emphasis>trpr</emphasis> to
               ignore specific "flows" which match the given (type,src,dst)
