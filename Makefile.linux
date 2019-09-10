@@ -1,0 +1,10 @@
+all:	trpr hcat
+
+trpr:	trpr.cpp
+	g++ -g -o trpr trpr.cpp -lm
+
+hcat:	hcat.cpp
+	g++ -g -o hcat hcat.cpp -lm
+
+clean:
+	rm -f trpr hcat

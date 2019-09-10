@@ -1,0 +1,874 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="transform.xsl"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+"http://www.oasis-open.org/docbook/xml/4.1/docbookx.dtd">
+<article>
+  <articleinfo>
+    <title><inlinemediaobject>
+        <imageobject>
+          <imagedata fileref="proteanlogo_small.png" scale="50" />
+        </imageobject>
+      </inlinemediaobject>TRPR User's Guide Version 2.0b2</title>
+
+    <titleabbrev>TRPR (TRace Plot Real-time) User's Guide</titleabbrev>
+
+    <abstract>
+      <para>The TRace Plot Real-time (TRPR) is open source software by the
+      <ulink url="http://www.nrl.navy.mil/">Naval Research Laboratory</ulink>
+      (NRL) PROTocol Engineering Advanced Networking (PROTEAN) group that
+      analyzes output from the <emphasis>tcpdump</emphasis> packet sniffing
+      program and creates output suitable for plotting. It also specifically
+      supports a range of functionality for specific use of the
+      <emphasis>gnuplot </emphasis>graphing program. <emphasis>trpr</emphasis>
+      can operate in a "real-time" plotting mode where
+      <emphasis>tcpdump</emphasis> <computeroutput>stdout</computeroutput> can
+      be piped into <emphasis>trpr</emphasis> and <emphasis>trpr's</emphasis>
+      <computeroutput>stdout</computeroutput> in turn can be piped directly
+      into <emphasis>gnuplot</emphasis> for a sort of real-time network
+      oscilloscope. <emphasis>Trpr</emphasis> can also parse
+      <emphasis>tcpdump</emphasis> text trace files and produce files which
+      can be plotted by <emphasis>gnuplot</emphasis> or imported into other
+      plotting or spreadsheet programs. IPv4 and IPv6 traces from
+      <emphasis>tcpdump</emphasis> are supported. <emphasis>Trpr</emphasis>
+      can also perform the same functions with <emphasis>mgen</emphasis> log
+      files (See <ulink
+      url="http://cs.itd.nrl.navy.mil/work/mgen/">http://cs.itd.nrl.navy.mil/work/mgen/</ulink>
+      for more information on <emphasis>mgen</emphasis> and the MGEN test tool
+      set) and <emphasis>ns-2</emphasis> (Berkeley's network simulator - see
+      <ulink
+      url="http://www.isi.edu/nsnam/ns/">http://www.isi.edu/nsnam/ns</ulink> )
+      trace files.</para>
+
+      <para>By default, <emphasis>trpr</emphasis> creates a "data rate" versus
+      time plot of the flows specified using the <literal>auto</literal> and
+      <literal>flow</literal> (and <literal>exclude</literal> ) filtering
+      commands. The <literal>auto</literal> command is used to set filters to
+      automatically detect and
+      <emphasis><emphasis>enumerate</emphasis></emphasis> individual flows
+      matching the <literal>auto</literal> filter parameters (protocol type,
+      source addr/port, and destination addr/port) and the
+      <literal>flow</literal> command aggregates flows matching its filter
+      specification under a single data plot set. The <literal>exclude
+      </literal>command is used to specify packet flows <emphasis>trpr
+      </emphasis>should ignore. The <literal>flow</literal> ,
+      <literal>auto</literal> and <literal>exclude</literal> commands can each
+      be used multiple times on the command line to specify different
+      combinations of filters to produce different desired output. (In the
+      future, an exclusion filter set will also be provided).</para>
+
+      <para>If the <literal>interarrival</literal> command is used,
+      <emphasis>trpr</emphasis> creates a plot of the differential
+      interarrival delay of packets for the specified flows. And for MGEN
+      packets, the <literal>latency</literal> command can be used to create a
+      plot of the transmission latency (<emphasis>mgen</emphasis>-logged
+      rxTime - txTime ) versus time for the flows. Also, for MGEN packets, the
+      <literal>loss</literal> command can be used to generate profiles of
+      packet loss over time. MGEN packet payloads contain sequence numbers and
+      time stamps to facilitate these analyses. The <literal>count</literal>
+      command simply produces counts of the indicate "send" and/or "recv"
+      events for the specified flows. The <literal>histogram</literal> command
+      causes <emphasis>trpr</emphasis> to output histograms of any of these
+      statistics and the <literal>window</literal> command determines the
+      averaging window interval to use (with "<literal>window -1</literal>"
+      over the entire trace file and "<literal>window 0</literal>" for
+      individual events). <emphasis>Trpr </emphasis>can also "play back" a
+      <emphasis>gnuplot</emphasis> visualization of trace file content at real
+      time rates with the <literal>replay </literal>command.</para>
+    </abstract>
+  </articleinfo>
+
+  <sect1 id="_Mgen_Usage">
+    <title>Downloads</title>
+
+    <para>The <emphasis>trpr</emphasis> package is available at <ulink
+    url="http://downloads.pf.itd.nrl.navy.mil/proteantools/">http://downloads.pf.itd.nrl.navy.mil/proteantools</ulink></para>
+
+    <para><emphasis>Tcpdump</emphasis> can be found at <ulink
+    url="http://ee.lbl.gov/">http://ee.lbl.gov/ </ulink></para>
+
+    <para><emphasis>Gnuplot's</emphasis> official web site is <ulink
+    revisionflag="off"
+    url="http://www.gnuplot.info/">http://www.gnuplot.info/</ulink></para>
+
+    <para>The <emphasis>MGEN</emphasis> web site is <ulink
+    url="http://cs.itd.nrl.navy.mil/work/mgen/">http://cs.itd.nrl.navy.mil/work/mgen/
+    </ulink></para>
+
+    <para>The <emphasis>ns</emphasis> web site is <ulink
+    url="http://www.isi.edu/nsnam/ns/">http://www.isi.edu/nsnam/ns</ulink></para>
+  </sect1>
+
+  <sect1 id="MGEN_Run-Time_Remote_Control">
+    <title>Build Instructions:</title>
+
+    <para>Simply compile <emphasis>trpr </emphasis>with a C++ compiler. It has
+    been primarily built with gcc on Unix platforms. For example, type:</para>
+
+    <para><computeroutput>g++ -o trpr trpr.cpp -lm </computeroutput></para>
+
+    <para>to build the executable binary.</para>
+
+    <para>On windows, use the provided Visual Studio Trpr.sln file to build
+    the application. A windows binary file release is also available on the
+    protean forge web site.</para>
+  </sect1>
+
+  <sect1 id="MGEN_Run-Time_Remote_Control">
+    <title>Quick Start</title>
+
+    <para>Here are a couple of examples illustrating use of
+    <emphasis>trpr</emphasis> in simple ways. Note that
+    <emphasis>trpr</emphasis> has a number of flexible command-line operations
+    to get the results you want and understanding these is strongly
+    recommended. And <emphasis>tcpdump</emphasis> has very flexible filtering
+    options for paring down the data captured from the network so that your
+    graphs can focus on the data of interest. The options of
+    <emphasis>tcpdump</emphasis> and <emphasis>trpr</emphasis> can be coupled
+    together in many different ways. And <emphasis>trpr</emphasis> supports
+    options to command <emphasis>gnuplot</emphasis> to create Gif or
+    Postscript files for hard output or use in other programs. Detailed usage
+    instructions for <emphasis>trpr </emphasis>and hints for
+    <emphasis>tcpdump</emphasis> and <emphasis>gnuplot</emphasis> usage are
+    given later.</para>
+
+    <sect2>
+      <title>Non-real-time Operation</title>
+
+      <para><orderedlist>
+          <listitem>
+            <para>Capture IP packets with <emphasis>tcpdump</emphasis> with
+            hexadecimal packet header output. Note you <emphasis
+            role="bold">must</emphasis> use <emphasis>tcpdump's</emphasis>
+            hexadecimal output option (-x) and some form of filtering that
+            captures only IP packets (<emphasis>trpr</emphasis> will not
+            properly parse the output of non-IP data (e.g. Appletalk, etc)
+            data which <emphasis>tcpdump</emphasis> may otherwise
+            capture:</para>
+
+            <para><literal><computeroutput>tcpdump -x ip
+            &lt;traceFile&gt;</computeroutput></literal></para>
+          </listitem>
+
+          <listitem>
+            <para>Use <emphasis>trpr </emphasis>to process the captured
+            &lt;traceFile&gt; to create a &lt;plotFile&gt; suitable for
+            plotting with <emphasis>gnuplot</emphasis>, automatically creating
+            lines on the graph for each unique "flow" of data discovered in
+            the &lt;traceFile&gt;:</para>
+
+            <para><literal><computeroutput>trpr input &lt;traceFile&gt; auto X
+            output &lt;plotFile&gt;</computeroutput></literal></para>
+          </listitem>
+
+          <listitem>
+            <para>Use <emphasis>gnuplot </emphasis>to display a graph of
+            <emphasis>trpr's</emphasis> analysis results (By default trpr puts
+            appropriate headers in the &lt;plotFile&gt; for
+            <emphasis>gnuplot</emphasis>:</para>
+
+            <para><literal><computeroutput>gnuplot -persist
+            &lt;plotFile&gt;</computeroutput></literal></para>
+
+            <para>As examples, mgen log files can be processed with:</para>
+
+            <para><literal><computeroutput>trpr mgen input &lt;mgenLogFile&gt;
+            auto X output &lt;plotFile&gt; </computeroutput></literal></para>
+
+            <para>and ns-2 simulation trace files can be processed
+            with:</para>
+
+            <para><computeroutput>trpr ns input &lt;nsTraceFile&gt; link
+            &lt;srcNode&gt;,&lt;dstNode&gt; send auto X output
+            &lt;plotFile&gt; </computeroutput></para>
+
+            <para>Note: The link command coupled with the send command
+            specifies to process packets sent over the link from node
+            &lt;src&gt; to node &lt;dst&gt; in the ns-2 simulation. The
+            &lt;src&gt; and/or &lt;dst&gt; arguments can be wildcarded with
+            the 'X' character to process multiple links to/from a particular
+            or any simulation node.</para>
+
+            <para>Note: For ns-2 mobile trace files, the link command should
+            be used in the form:</para>
+
+            <para><computeroutput>link &lt;nodeId&gt;,{AGT | RT | MAC}
+            </computeroutput></para>
+
+            <para>to capture the corresponding set of packets (Agent, Router,
+            or MAC) for a mobile ns-2 node).</para>
+
+            <para>We hope to provide more examples for using trpr with ns-2
+            soon.</para>
+          </listitem>
+        </orderedlist></para>
+    </sect2>
+
+    <sect2>
+      <title>Real-time Operation</title>
+
+      <para><orderedlist>
+          <listitem>
+            <para>Set up <emphasis>tcpdump</emphasis> to capture IP packets
+            and direct hexadecimal output to <emphasis>trpr</emphasis>, in
+            turn piping <emphasis>trpr's</emphasis> real-time output directly
+            to <emphasis>gnuplot </emphasis>to get continuously updated plots
+            of network traffic flow activity Note you <emphasis
+            role="bold">must</emphasis> use<emphasis> tcpdump's</emphasis>
+            hexadecimal output option ( -x ) and some form of filtering that
+            captures only IP packets (<emphasis>trpr</emphasis> will not
+            properly parse the output of non-IP data (e.g. Appletalk, etc)
+            data which<emphasis> tcpdump</emphasis> may otherwise
+            capture:</para>
+
+            <para><literal><computeroutput>tcpdump -l -x ip | trpr real auto X
+            | gnuplot -noraise -persist</computeroutput></literal></para>
+
+            <para><literal>Or for mgen operation:</literal></para>
+
+            <para><literal><computeroutput>mgen flush output /dev/stdout |
+            trpr mgen real auto X | gnuplot -noraise -persist
+            </computeroutput></literal></para>
+
+            <para>Note that the "tail -f" option can also be used to pipe a
+            <emphasis>mgen </emphasis>log file to <emphasis>trpr </emphasis>in
+            parallel with logging. (The <emphasis>mgen </emphasis>"flush"
+            option causes <emphasis>mgen</emphasis> to "flush" its output line
+            by line for better real time performance. Note this may penalize
+            system performance)</para>
+          </listitem>
+        </orderedlist></para>
+    </sect2>
+  </sect1>
+
+  <sect1 id="MGEN_Run-Time_Remote_Control">
+    <title>Detailed Instructions</title>
+
+    <para><markup>Usage:</markup></para>
+
+    <para><computeroutput>trpr
+    [version][mgen][ns][raw][key]</computeroutput></para>
+
+    <para><computeroutput> [real][latency][interarrival][loss][count]
+    </computeroutput></para>
+
+    <para><computeroutput> [window &lt;sec&gt;] [history &lt;sec&gt;]
+    </computeroutput></para>
+
+    <para><computeroutput> [flow
+    &lt;type,srcAddr/port,dstAddr/port&gt;,flowId] </computeroutput></para>
+
+    <para><computeroutput> [auto
+    &lt;type,srcAddr/port,dstAddr/port&gt;,flowId] </computeroutput></para>
+
+    <para><computeroutput> [exclude
+    &lt;type,srcAddr/port,dstAddr/port&gt;,flowId] </computeroutput></para>
+
+    <para><computeroutput> [input &lt;inputFile&gt;] [output
+    &lt;outputFile&gt;] </computeroutput></para>
+
+    <para><computeroutput> [link &lt;src&gt;[,&lt;dst&gt;]][send|recv][nodup]
+    </computeroutput></para>
+
+    <para><computeroutput> [xrange [&lt;startSec&gt;][:&lt;stopSec&gt;]]
+    [yrange [&lt;min&gt;][:&lt;max&gt;]]</computeroutput></para>
+
+    <para><computeroutput> [offset &lt;hh:mm:ss&gt;][absolute]
+    </computeroutput></para>
+
+    <para><computeroutput> [summary][histogram][replay &lt;factor&gt;]
+    </computeroutput></para>
+
+    <para><computeroutput> [png &lt;pngFile&gt;][post &lt;postFile&gt;][gif
+    &lt;gifFile&gt;][multiplot]</computeroutput></para>
+
+    <para><computeroutput> [surname
+    &lt;titlePrefix&gt;][ramp][scale]</computeroutput></para>
+
+    <para><computeroutput> [nolegend] </computeroutput></para>
+
+    <para>NOTE: <emphasis>Type, addr, or port parameters can be "wildcarded"
+    with an 'X' character. </emphasis></para>
+  </sect1>
+
+  <sect1 id="Command-line_Options">
+    <title>Command-line Parameters and Options</title>
+
+    <para></para>
+
+    <informaltable>
+      <tgroup cols="2">
+        <tbody>
+          <row>
+            <entry><literal>version</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to display program version
+            number and exit.</entry>
+          </row>
+
+          <row>
+            <entry><literal>mgen</literal></entry>
+
+            <entry><emphasis>trpr</emphasis> will expect to process a
+            <emphasis>mgen</emphasis> log file instead of
+            <emphasis>tcpdump</emphasis> hex output.</entry>
+          </row>
+
+          <row>
+            <entry><literal>ns</literal></entry>
+
+            <entry><emphasis>trpr</emphasis> will expect to process a
+            <emphasis>ns</emphasis> trace file instead of
+            <emphasis>tcpdump</emphasis> hex output</entry>
+          </row>
+
+          <row>
+            <entry><literal>raw</literal></entry>
+
+            <entry>When this option is given, the &lt;outputFile&gt; will only
+            include unlabeled sets of plotting data without the default
+            <emphasis>gnuplot</emphasis> compatible headers. This is useful to
+            get the "raw" plot data for importing into a spreadsheet or other
+            plotting program</entry>
+          </row>
+
+          <row>
+            <entry><literal>key</literal></entry>
+
+            <entry>With this option, trpr will print a "key" to the data plot
+            sets in the &lt;outputFile&gt;. This consists of one
+            comma-delimited line with a leading "#" character. This line is
+            printed when new flows of data are detected and another data set
+            column is output. The first column is marked "Time". Subsequent
+            columns are labeled with a description of the flow data being
+            plotted.</entry>
+          </row>
+
+          <row>
+            <entry><literal>rate</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to create plots of data
+            rate versus time. The window command can be used to set
+            <emphasis>trpr</emphasis> 's rate averaging window. The rate
+            command is the implicit default plot mode for
+            <emphasis>trpr</emphasis>.</entry>
+          </row>
+
+          <row>
+            <entry><literal>interarrival</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to create plots of
+            differential interarrival packet delays for detected flows instead
+            of the default data rate versus time plot.</entry>
+          </row>
+
+          <row>
+            <entry><literal>latency</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to create plots of
+            transmission delay for <emphasis>mgen</emphasis> flows instead of
+            the default data rate versus time plot. This type of plot is only
+            available for <emphasis>mgen </emphasis>operation.</entry>
+          </row>
+
+          <row>
+            <entry><literal>loss</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to create plots of packet
+            loss based on received sequence numbers for
+            <emphasis>mgen</emphasis> flows instead of the default data rate
+            versus time plot. This type of plot is only available for
+            <emphasis>mgen</emphasis> operation. The <literal>window</literal>
+            command can be used to set <emphasis>trpr</emphasis> 's loss
+            averaging window. The "window" specified should be large enough to
+            encompass several expected packet events for desired
+            results.</entry>
+          </row>
+
+          <row>
+            <entry><literal>count</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to create plots of packet
+            counts versus time instead of the default data rate versus time
+            plot. The window command can be used to set
+            <emphasis>trpr's</emphasis> count accumulation window. The rate
+            command is the implicit default plot mode for
+            <emphasis>trpr</emphasis>.</entry>
+          </row>
+
+          <row>
+            <entry><literal>real</literal></entry>
+
+            <entry>When this option is given, <emphasis>trpr</emphasis> will
+            output plotting commands and data to its
+            <literal>stdout</literal>. This output is intended for the
+            <literal>stdin</literal> of <emphasis>gnuplot</emphasis> for
+            real-time plotting. However, note that this output can be
+            redirected to a file for storage, and then later that file can be
+            directed to the input of <emphasis>gnuplot</emphasis> for
+            "playback". Note that the "real-time" mode can be used
+            simultaneously with <emphasis>trpr</emphasis> 's cumulative
+            "non-real-time" output option. Note that the "real time" graph
+            update occurs once per window time. This option can also be used
+            with pre-existing trace files. Use the replay command to limit the
+            actual graph animation rate or the trace file will be parsed at
+            "cartoon rate" (i.e. as fast as possible).</entry>
+          </row>
+
+          <row>
+            <entry><literal>gif &lt;gifFile&gt;</literal></entry>
+
+            <entry>This option commands <emphasis>gnuplot</emphasis> to create
+            a "gif" (Graphics Interchange Format) file when it plots instead
+            of the default X11 display. The &lt;gifFile&gt; parameter is the
+            name of the file <emphasis>gnuplot</emphasis> will create when it
+            processes <emphasis>trpr's</emphasis> output. This can be used in
+            either real-time or non-real-time operation. In real-time
+            operation, the &lt;gifFile&gt; will be periodically overwritten
+            according to window setting.</entry>
+          </row>
+
+          <row>
+            <entry><literal>post &lt;postFile&gt;</literal></entry>
+
+            <entry>This option commands <emphasis>gnuplot</emphasis> to create
+            a Postscript file when it plots instead of the default X11
+            display. The &lt;postFile&gt; parameter is the name of the file
+            <emphasis>gnuplot</emphasis> will create when it processes
+            <emphasis>trpr</emphasis> 's output. This can be used in either
+            real-time or non-real-time operation. In real-time operation, the
+            &lt;postFile&gt; will be periodically overwritten according to
+            window setting.</entry>
+          </row>
+
+          <row>
+            <entry><literal>png &lt;pngFile&gt;</literal></entry>
+
+            <entry>This option commands <emphasis>gnuplot</emphasis> to create
+            a .pngt file when it plots instead of the default X11 display. The
+            &lt;pngFile&gt; parameter is the name of the file
+            <emphasis>gnuplot</emphasis> will create when it processes
+            <emphasis>trpr</emphasis> 's output. This can be used in either
+            real-time or non-real-time operation. In real-time operation, the
+            &lt;pngFile&gt; will be periodically overwritten according to
+            window setting.</entry>
+          </row>
+
+          <row>
+            <entry><literal>surname &lt;surName&gt;</literal></entry>
+
+            <entry>Prepends "surname" to the plot's title.</entry>
+          </row>
+
+          <row>
+            <entry><literal>multiplot</literal></entry>
+
+            <entry>With <emphasis>gnuplot</emphasis>,
+            <emphasis>trpr</emphasis> will create a "multiplot" graph with one
+            graph per detected flow (stacked vertically). (This only works
+            with the real-time updated (real command) graphing mode for
+            now).</entry>
+          </row>
+
+          <row>
+            <entry><literal>ramp</literal></entry>
+
+            <entry>By default, <emphasis>trpr</emphasis> creates "stair step"
+            plots of its averaging window results (i.e. 2 data points per
+            window). The optional ramp command causes
+            <emphasis>trpr</emphasis> to create plots with one data point per
+            averaging window (at the window's end), thus "ramping" from one
+            window to the next. This may be useful for alternative
+            post-processing of <emphasis>trpr's</emphasis> output files or to
+            reduce the number of data points on plots with an extremely large
+            number of data points where the window start/stop points are
+            indiscernible anyway.</entry>
+          </row>
+
+          <row>
+            <entry><literal>window &lt;sec&gt;</literal></entry>
+
+            <entry>This parameter sets the step size of
+            <emphasis>trpr's</emphasis> window-based data rate and packet loss
+            averaging algorithms. The step size unit is time in seconds. This
+            algorithm counts the cumulative quantity of data (or packet loss)
+            in each window of time and calculates the kilobits-per-second
+            (kbps) (or loss fraction) value for each step. These discrete
+            values of data rate (or loss fraction) versus time comprise trpr
+            's plot data. Two points are plotted, one at each time window's
+            beginning and one at its end, to form a "stair step" plot. The
+            window command also controls the <emphasis>gnuplot</emphasis>
+            real-time graph update rate for real command operation. The window
+            &lt;sec&gt; value can be specified as "-1" to cause
+            <emphasis>trpr</emphasis> to average across the entire trace file
+            (or the period specified by the range command). Note the negative
+            window value should not be used in combination with the real
+            command. Default = 1 second.</entry>
+          </row>
+
+          <row>
+            <entry><literal>history &lt;sec&gt;</literal></entry>
+
+            <entry>This parameter determines the range (in time units of
+            seconds) of the X-axis of the graphs produced in
+            <emphasis>trpr's</emphasis> real-time mode. As time progresses,
+            the <emphasis>gnuplot</emphasis> graphs will scroll in
+            "strip-chart" fashion to display the current history of network
+            activity. Default = 20 seconds.</entry>
+          </row>
+
+          <row>
+            <entry><literal>auto
+            &lt;type,srcAddr:port,dstAddr:port,id&gt;</literal></entry>
+
+            <entry>This command instructs <emphasis>trpr</emphasis> to
+            automatically discover and plot "flows" of network data according
+            to the matching (type,src,dst,id) criteria provided. Otherwise,
+            <emphasis>trpr</emphasis> only plots "flows" given by the flow
+            option described below. Valid values for &lt;type&gt; include "X",
+            "udp", "tcp", or the numeric value of the IP protocol type of
+            interest. The "X" value "wildcards" the &lt;type&gt; so that
+            <emphasis>trpr</emphasis> will automatically create a plot on the
+            graph for any type of IP protocol which meets the given
+            &lt;source,destination &gt; criteria. The source and destination
+            addresses (srcAddr &amp; dstAddr) must be given in dotted decimal
+            notation or may also be wildcarded with an "X" character. The
+            &lt;source,destination&gt; portion may also be omitted and then
+            will be automatically wildcarded. The optional "id" portion of the
+            flow description corresponds to any "flow id" which may apply to
+            the data analyzed. This currently only applies to
+            <emphasis>mgen</emphasis> log files when the user wishes to
+            additionally differentiate <emphasis>mgen</emphasis> flows by
+            their "flow id". (See the <emphasis>mgen</emphasis> user's guide
+            for more information). As an example, " auto udp" will cause
+            <emphasis>trpr</emphasis> to enumerate individual plots for each
+            unique UDP protocol flow detected regardless of source or
+            destination. The source and destination port numbers can be
+            explicitly specified or wildcarded with an "X" or implicitly
+            through omission. Note that flows which match those given with the
+            flow option (see below) will not be tested against the auto
+            criteria. The auto option may be used multiple times on the
+            <emphasis>trpr</emphasis> command line to establish multiple sets
+            of automatic flow matching criteria (e.g.
+            <emphasis>trpr</emphasis> auto udp auto tcp ... "). Note that if
+            no flow or auto filters are provided, <emphasis
+            role="bold">trpr</emphasis> runs with a default wildcard
+            enumeration filter of "auto X"</entry>
+          </row>
+
+          <row>
+            <entry><literal>flow
+            &lt;type,srcAddr:port,dstAddr:port,id&gt;</literal></entry>
+
+            <entry>This command instructs trpr to look for and plot specific
+            "flows" which match the given (type,src,dst) criteria. All flows
+            which match the given criteria are accumulated together onto a
+            single plot line. The address and port criteria are given in the
+            same way as for the auto command and may be wildcarded in the same
+            way. For example, the option "flow udp" will cause trpr to
+            accumulate all detected UDP traffic (regardless of source and
+            destination since they are implicitly wildcarded here) into a
+            single plot. Thus the command "<emphasis>trpr</emphasis> flow udp
+            flow tcp ..." will produce a graph with two lines, one plotting
+            cumulative UDP traffic and the other plotting cumulative TCP
+            traffic detected by <emphasis>tcpdump</emphasis>. As with the auto
+            option, the flow option may be used multiple times on the command
+            line and may be used in conjunction with the auto option. Flows of
+            network traffic matching the criteria specified with the flow
+            option will be accumulated into a matching flow plot and are also
+            tested against the sets of auto option criteria so redundant plot
+            lines may result depending on the criteria used.</entry>
+          </row>
+
+          <row>
+            <entry><literal>exclude
+            &lt;type,srcAddr:port,dstAddr:port,id&gt;</literal></entry>
+
+            <entry>This command instructs <emphasis>trpr</emphasis> to ignore
+            specific "flows" which match the given (type,src,dst) criteria.
+            The address and port criteria are given in the same way as for the
+            auto command and may be wildcarded in the same way. For example,
+            the option "flow udp" will cause <emphasis>trpr</emphasis> to
+            ignore all detected UDP traffic (regardless of source and
+            destination since they are implicitly wildcarded here). The
+            exclude command filters are evaluated before the auto and flow
+            command filters.</entry>
+          </row>
+
+          <row>
+            <entry><literal>input &lt;inputFile&gt;</literal></entry>
+
+            <entry>This option instructs <emphasis>trpr</emphasis> to use the
+            file name given by &lt;inputFile&gt; for input. Otherwise
+            <emphasis>trpr</emphasis> looks for input from stdin . The
+            expected input format is text output from the
+            <emphasis>tcpdump</emphasis> program run with its hexadecimal
+            option (-x) given and properly filtered so that only IP protocol
+            data is captured. Non-IP data from <emphasis>tcpdump</emphasis>
+            will result in errors in <emphasis>trpr's</emphasis>
+            output.</entry>
+          </row>
+
+          <row>
+            <entry><literal>output &lt;outputFile&gt;</literal></entry>
+
+            <entry>This option instructs <emphasis>trpr</emphasis> to save
+            cumulative data into the file name given by &lt;outputFile&gt; for
+            later (non-real-time) plotting. The plot data stored here contains
+            data from the entire <emphasis>tcpdump</emphasis> run (as opposed
+            to the trpr real-time mode's limited history of data). By default
+            (i.e. unless the raw option is given), the output file contains
+            text header information at its beginning so that
+            <emphasis>gnuplot</emphasis> can be used to create a
+            nicely-labeled graph.</entry>
+          </row>
+
+          <row>
+            <entry><literal>link &lt;src&gt;[,&lt;dst&gt;]</literal></entry>
+
+            <entry>This causes <emphasis>trpr</emphasis> to process only
+            packets associated with the identified "link" or "node". For ns
+            trace files, the &lt;src&gt; and &lt;dst&gt; values correspond to
+            simulation node identifiers. For <emphasis>tcpdump</emphasis>
+            operation, the MAC address is used. Note that &lt;src&gt; and/or
+            &lt;dst&gt; values can be wildcarded by omission or by designating
+            'X' as the value. For ns simulations using the wireless/mobility
+            extensions, the &lt;dst&gt; value may be "AGT" or "RTR"
+            corresponding to the wireless transmission type (By default, both
+            "AGT" and"RTR" are counted by trpr) since the notion of "links" is
+            not used in the trace files. Wildcarding the &lt;src&gt; or
+            &lt;dst&gt; values allows the user to analyze all traffic arriving
+            to and/or leaving from a specific simulation node or MAC address.
+            The send and recv commands may be optionally used in combination
+            with the link command to specify whether only arriving packets (
+            recv ) or departing packets (send ) are processed. By default,
+            only departing packets are processed.</entry>
+          </row>
+
+          <row>
+            <entry><literal>nodup</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to discard duplicate
+            packets.</entry>
+          </row>
+
+          <row>
+            <entry><literal>send</literal></entry>
+
+            <entry>Specifies that only "sent" packets are to be processed. In
+            <emphasis role="bold">ns</emphasis>, this corresponds to 's'
+            events for traced links or nodes. In <emphasis>tcpdump</emphasis>,
+            this corresponds to packets whose source MAC address correspond to
+            the &lt;src&gt; value given with the link command. For
+            <emphasis>mgen</emphasis> logfiles, this corresponds to packets
+            sent by <emphasis>mgen</emphasis>. By default, only "received"
+            packets are counted by trpr . The send and recv commands are
+            generally useful only for <emphasis>ns</emphasis> simulations but
+            may be applicable to <emphasis>tcpdump</emphasis> trace file
+            analysis in some situations.</entry>
+          </row>
+
+          <row>
+            <entry><literal>recv</literal></entry>
+
+            <entry>Specifies that only "received" packets are to be processed.
+            In <emphasis>ns</emphasis>, this corresponds to 'r' events for
+            traced links or nodes. In <emphasis>tcpdump</emphasis>, this
+            corresponds to packets whose destination MAC address corresponds
+            to the &lt;dst&gt; value given with the link command. By default,
+            only "received" packets are counted by <emphasis>trpr</emphasis> .
+            The send and recv commands are generally useful only for
+            <emphasis>ns</emphasis> simulations but may be applicable to
+            <emphasis>tcpdump</emphasis> trace file analysis in some
+            situations.</entry>
+          </row>
+
+          <row>
+            <entry><literal>xrange &lt;min&gt;[:max]</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to skip ahead to the
+            "start time" (in seconds) from the first packet event in the trace
+            file and end processing at the optional "stop time" (in seconds).
+            Setting the "stop time" to -1 causes <emphasis>trpr</emphasis> to
+            process until the end of the trace input. Note the range command
+            may be used in combination with the offset and/or absolute
+            commands to perform analysis for a specific time period in the
+            trace file. NOTE: the deprecated "range" command is still
+            supported.</entry>
+          </row>
+
+          <row>
+            <entry><literal>yrange &lt;min&gt;[:max]</literal></entry>
+
+            <entry>Will override TRPR's auto-yrange behavior</entry>
+          </row>
+
+          <row>
+            <entry><literal>offset &lt;hh:mm:ss&gt;</literal></entry>
+
+            <entry>This allows the user to specify an absolute analysis start
+            time using a time-of-day reference. The time given is in 24-hour
+            clock time format and must be within 12 hours of the time of the
+            first packet event in the trace file.</entry>
+          </row>
+
+          <row>
+            <entry><literal>absolute</literal></entry>
+
+            <entry>Causes <emphasis>trpr</emphasis> to use the absolute time
+            given in the trace file in its output instead of "normalizing" the
+            time values (generally the plots' x-axis) to zero time for the
+            first packet event or optional offset time.</entry>
+          </row>
+
+          <row>
+            <entry><literal>summary</literal></entry>
+
+            <entry>This causes <emphasis>trpr</emphasis> to output summary
+            statistics of results to <literal>stdout</literal> at the end of
+            analysis. These summary results are available with or without the
+            production of data intended for plotting. This options is useful
+            for commanding or scripting <emphasis>trpr</emphasis> to collect
+            statistics in addition to or instead of plots.</entry>
+          </row>
+
+          <row>
+            <entry><literal>histogram</literal></entry>
+
+            <entry>This causes <emphasis>trpr</emphasis> to output a histogram
+            of the values of analyses intervals (intervals determined by the
+            window command) for each flow to <literal>stdout</literal>. Some
+            percentile information of the histogram content is also provided
+            in the output. The histograms are comma-delimited tables of
+            values. The hcat program provided in the TRPR distribution can be
+            used to query and manipulate these histogram files or they can
+            also be plotted with a graphing tool (e.g.
+            <emphasis>gnuplot</emphasis>). The hcat program also allows
+            multiple histogram files from multiple <emphasis>trpr</emphasis>
+            analysis runs to be combined together for cumulative statistics
+            collection. Currently the quantization size and curve of the
+            histogram is fixed and adapts in range with data. The histogram
+            output may be useful for packet latency analyses or other kinds of
+            statistics compilations.</entry>
+          </row>
+
+          <row>
+            <entry><literal>replay &lt;factor&gt;</literal></entry>
+
+            <entry>This limits <emphasis>trpr's</emphasis> rate of real-time
+            <emphasis>gnuplot</emphasis> graph generation to a &lt;factor&gt;
+            of real time when parsing a pre-existing trace file. When the
+            replay command is given, <emphasis>trpr</emphasis> generates the
+            same <emphasis>gnuplot</emphasis> output as for the real command.
+            The &lt;factor&gt; parameter scales the playback rate with respect
+            to real time. For example, &lt;factor&gt; = 1 is actual real time,
+            while &lt;factor&gt; = 2 is double speed playback. Note that real
+            time update occurs once per window time.</entry>
+          </row>
+
+          <row>
+            <entry>scale</entry>
+
+            <entry>Autoscales the plots y axis.</entry>
+          </row>
+
+          <row>
+            <entry>nolegend</entry>
+
+            <entry>No key/legend will be created in the gnuplot output. This
+            is particularly useful for smaller displays as well as on certain
+            live displays.</entry>
+          </row>
+        </tbody>
+      </tgroup>
+    </informaltable>
+  </sect1>
+
+  <sect1 id="MGEN_Run-Time_Remote_Control">
+    <title><emphasis>tcpdump</emphasis> Hints</title>
+
+    <para><orderedlist>
+        <listitem>
+          <para>Make sure you are using <emphasis>tcpdump</emphasis> filters
+          such that only IP packets are captured (<emphasis>trpr</emphasis>
+          currently doesn't like non-IP packets in
+          <emphasis>tcpdump</emphasis> 's output).</para>
+        </listitem>
+
+        <listitem>
+          <para>Always use the "-x" option when using
+          <emphasis>tcpdump</emphasis> with <emphasis>trpr</emphasis>.
+          (<emphasis>trpr</emphasis> looks for and parses the hexadecimal
+          output)</para>
+        </listitem>
+
+        <listitem>
+          <para>Use <emphasis>tcpdump's</emphasis> "-n" option to skip DNS
+          lookups and speed up <emphasis>tcpdump's</emphasis> performance
+          (<emphasis>trpr</emphasis> only uses dotted decimal numeric IP
+          addresses).</para>
+        </listitem>
+
+        <listitem>
+          <para>Use <emphasis>tcpdump's</emphasis> line buffering option
+          ("-l") to get output with minimal delay for real time
+          plotting.</para>
+        </listitem>
+
+        <listitem>
+          <para>Read and learn <emphasis>tcpdump's</emphasis> man page for the
+          extensive set of filtering options <emphasis>tcpdump</emphasis>
+          provides. Uses these filter options in conjunction with
+          <emphasis>trpr's</emphasis> own filters to get the graphical results
+          you wan</para>
+        </listitem>
+
+        <listitem>
+          <para>Leverage <emphasis>tcpdump's</emphasis> ability to store
+          captured data in a binary file (use <emphasis>tcpdump's</emphasis>
+          "-w" option) and then post-process it with
+          <emphasis>tcpdump</emphasis> 's filter's (using
+          <emphasis>tcpdump</emphasis> to process the stored binary file with
+          its "-r" option and redirecting its output to
+          <emphasis>trpr</emphasis>).</para>
+        </listitem>
+      </orderedlist></para>
+  </sect1>
+
+  <sect1 id="_MGEN_Script_Format">
+    <title><emphasis>gnuplot</emphasis> Hints</title>
+
+    <orderedlist>
+      <listitem>
+        <para>Use <emphasis>gnuplot's</emphasis> "-noraise" option when using
+        with <emphasis>trpr</emphasis> in "real-time" mode if you don't want
+        the updated plots to continually pop to your display's top
+        level.</para>
+      </listitem>
+
+      <listitem>
+        <para>Use <emphasis>gnuplot's</emphasis> "-persist" option if you wish
+        the last plot to remain displayed after exiting.</para>
+      </listitem>
+
+      <listitem>
+        <para><emphasis>trpr's</emphasis> output files for
+        <emphasis>gnuplot</emphasis> are in text format and easily edited to
+        customize output. <emphasis>Gnuplot</emphasis> is a very flexible
+        program with lots of options to get the graphs into almost any format
+        you would like. It is also lightning fast.</para>
+      </listitem>
+    </orderedlist>
+  </sect1>
+
+  <sect1>
+    <title>Examples of Use</title>
+
+    <para>To pipe <emphasis>mgen</emphasis> output directly into a real-time
+    <emphasis>gnuplot</emphasis> display and create new plots for each src/dst
+    pair:</para>
+
+    <para><computeroutput>mgen flush event "LISTEN TCP 5000" | trpr mgen
+    window 5 history 300 real auto X multiplot rate | gnuplot -noraise
+    -persist</computeroutput></para>
+  </sect1>
+</article>
