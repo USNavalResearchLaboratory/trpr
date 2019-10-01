@@ -2126,6 +2126,8 @@ int main(int argc, char* argv[])
     bool discardDuplicates = false;
     bool monitor = false;
     
+    unsigned int seqMax = 0xffffffff;  // 32-bit sequence number by default
+    
     char* surname = NULL;
     
     PacketEvent::TracePoint link;   // Our tracepoint (wildcard default)
@@ -2335,7 +2337,7 @@ int main(int argc, char* argv[])
 	{
 	    i++;
 	    plotMode = DROPS;
-        tempEventMask |= DROP;
+            tempEventMask |= DROP;
 	}
 	else if (!strncmp("loss", argv[i], 5))
         {
@@ -2483,7 +2485,25 @@ int main(int argc, char* argv[])
             fprintf(stderr, "trpr: Adding exclusion filter: ");
             theFlow->PrintDescription(stderr);
             fprintf(stderr, "\n");
-        }       
+        }      
+        else if (!strcmp("seqmax", argv[i]))
+        {
+            i++;
+            if (i >= argc)
+            {
+                fprintf(stderr, "trpr: Insufficient \"seqmax\" arguments!\n");
+                usage();
+                exit(-1);
+            }
+            int smax;
+            if (1 != sscanf(argv[i++], "%i", &smax))
+            {
+                fprintf(stderr, "trpr error: invalid seqMax value\n");
+                usage();
+                exit(-1);
+            }
+            seqMax = (unsigned int)smax;
+        } 
         else if (!strcmp("link", argv[i]))
         {            
             i++;
@@ -2663,7 +2683,7 @@ int main(int argc, char* argv[])
     while(f)
     {
         if ((LOSS2 == plotMode) || (discardDuplicates))
-            f->InitLossTracker2(windowSize);
+            f->InitLossTracker2(windowSize, seqMax);
         f = f->Next();
     }
     
@@ -2980,7 +3000,7 @@ int main(int argc, char* argv[])
                             flowList.Append(theFlow);
                             
                             if ((LOSS2 == plotMode) || (discardDuplicates))
-                                theFlow->InitLossTracker2(windowSize);
+                                theFlow->InitLossTracker2(windowSize, seqMax);
 
                             fprintf(stderr, "trpr: At time %f - Adding flow: ", theTime);
                             theFlow->PrintDescription(stderr);
