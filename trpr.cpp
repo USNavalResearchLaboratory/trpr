@@ -1084,7 +1084,7 @@ void Histogram::Print(FILE* file)
             if (bin[i].count)
             {
                 double x = bin[i].total / ((double)bin[i].count);
-                fprintf(file, "%f, %lu\n", x, bin[i].count);    
+                fprintf(file, "%lf, %lu\n", x, bin[i].count);    
             }
         }
     }
@@ -1380,7 +1380,7 @@ class FlowList
 
 void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
                       double theTime, double windowStart, double windowEnd, 
-                      bool realTime, bool stairStep);
+                      bool realTime, bool stairStep, bool monitor);
 void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xMax, 
                    const char* pngFile, const char* postFile, bool scatter, 
                    bool autoScale, bool legend, double minYRange, double maxYRange);
@@ -1447,7 +1447,7 @@ bool PointList::PrintData(FILE* filePtr)
     Point* next = head;
     while (next)
     {
-        fprintf(filePtr, "%f, %f\n", next->X(), next->Y());
+        fprintf(filePtr, "%lf, %lf\n", next->X(), next->Y());
         next = next->Next();
     }
     if (head)
@@ -1506,7 +1506,7 @@ bool LossTracker::Update(double theTime, unsigned long theSequence, unsigned lon
 {
     if (theTime < last_time) 
     {
-        fprintf(stderr, "trpr: LossTracker::Update() time out of order (thisTime:%f lastTime:%f)!\n",
+        fprintf(stderr, "trpr: LossTracker::Update() time out of order (thisTime:%lf lastTime:%lf)!\n",
                          theTime, last_time);
         return false;
     }
@@ -1624,7 +1624,7 @@ int LossTracker2::Update(double theTime, unsigned long theSequence, unsigned lon
 {
     if (theTime < time_last) 
     {
-        fprintf(stderr, "trpr: LossTracker::Update() time out of order (thisTime:%f lastTime:%f)!\n",
+        fprintf(stderr, "trpr: LossTracker::Update() time out of order (thisTime:%lf lastTime:%lf)!\n",
                          theTime, time_last);
         //exit(-1);
     }
@@ -2769,7 +2769,7 @@ int main(int argc, char* argv[])
     double timeout = -1.0;   
 #ifndef WIN32  // no real-time TRPR for WIN32 yet
     Waiter waiter;  // for realtime replay    
-    if (realTime) timeout = updateWindow;
+    if (realTime || monitor) timeout = updateWindow;
 #endif // !WIN32
     bool noEvents = true;
     
@@ -2904,7 +2904,7 @@ int main(int argc, char* argv[])
         if (theTime < startTime) continue;  
         if ((stopTime >= 0.0) && (theTime > stopTime)) break;
                     
-        //fprintf(stderr, "time>%f %x.%.5hu > %x.%.5hu proto>%s len>%u\n", 
+        //fprintf(stderr, "time>%lf %x.%.5hu > %x.%.5hu proto>%s len>%u\n", 
         //        theTime, srcAddr, srcPort, dstAddr, dstPort, 
         //        proto, pktSize);
         
@@ -2925,7 +2925,7 @@ int main(int argc, char* argv[])
             if (windowSize > 0.0)
             {
                 UpdateWindowPlot(plotMode, flowList, outfile, theTime,
-                             windowStart, windowEnd, realTime, stairStep);
+                                 windowStart, windowEnd, realTime, stairStep, monitor);
                 if (windowEnd > maxTime)
                 {
                     maxTime = windowEnd;
@@ -3002,7 +3002,7 @@ int main(int argc, char* argv[])
                             if ((LOSS2 == plotMode) || (discardDuplicates))
                                 theFlow->InitLossTracker2(windowSize, seqMax);
 
-                            fprintf(stderr, "trpr: At time %f - Adding flow: ", theTime);
+                            fprintf(stderr, "trpr: At time %lf - Adding flow: ", theTime);
                             theFlow->PrintDescription(stderr);
                             fprintf(stderr, "\n");
 
@@ -3082,22 +3082,22 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%f", theTime);
+                                        fprintf(outfile, "%lf", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %f\n", rate);
+                                        fprintf(outfile, ", %lf\n", rate);
                                     }
                                     if (monitor)
                                     {
-                                        fprintf(stdout, "%lf, ", theTime);
+                                        fprintf(stdout, "%lf ", theTime);
                                         theFlow->PrintDescription(stdout);
-                                        fprintf(stdout, ", %f\n", rate);
+                                        fprintf(stdout, " %lf\n", rate);
                                     }
                                 }    
                             }                            
                             break;
                         case LOSS:
-                            //fprintf(stderr, "UpdateLossTracker: t:%f s:%lu\n", theTime, sequence);
+                            //fprintf(stderr, "UpdateLossTracker: t:%lf s:%lu\n", theTime, sequence);
                             if (!theFlow->UpdateLossTracker(theTime, sequence))
                             {
                                 
@@ -3140,21 +3140,21 @@ int main(int argc, char* argv[])
                                     if (outfile)
                                     {
                                         // Window start
-                                        fprintf(outfile, "%f", theFlow->LossWindowStart2());
+                                        fprintf(outfile, "%lf", theFlow->LossWindowStart2());
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %f\n", lossFraction);
+                                        fprintf(outfile, ", %lf\n", lossFraction);
                                         // Window end
-                                        fprintf(outfile, "%f", theTime);
+                                        fprintf(outfile, "%lf", theTime);
                                         n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
-                                        fprintf(outfile, ", %f\n", lossFraction);
+                                        fprintf(outfile, ", %lf\n", lossFraction);
                                     }
                                     if (monitor)
                                     {
-                                        fprintf(stdout, "%lf, ", theTime);
+                                        fprintf(stdout, "%lf ", theTime);
                                         theFlow->PrintDescription(stdout);
-                                        fprintf(stdout, ", %f\n", lossFraction);
+                                        fprintf(stdout, " %lf\n", lossFraction);
                                     }
                                     theFlow->ResetLossTracker2();
                                     break;
@@ -3195,15 +3195,16 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%f", theTime);
+                                        fprintf(outfile, "%lf", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
                                         fprintf(outfile, ", %f\n", 1.0);
                                     }
                                     if (monitor)
                                     {
+                                        fprintf(stdout, "%lf ", theTime);
                                         theFlow->PrintDescription(stdout);
-                                        fprintf(stdout, " drop\n");
+                                        fprintf(stdout, " 1.0\n");
                                     }
                                 }
 			                }
@@ -3234,15 +3235,16 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%f", theTime);
+                                        fprintf(outfile, "%lf", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
                                         fprintf(outfile, ", %f\n", 1.0);
                                     }
                                     if (monitor)
                                     {
+                                        fprintf(stdout, "%lf ", theTime);
                                         theFlow->PrintDescription(stdout);
-                                        fprintf(stdout, " packet\n");
+                                        fprintf(stdout, " 1.0\n");
                                     }
                                 }
 			                }
@@ -3271,17 +3273,17 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%f", theTime);
+                                        fprintf(outfile, "%lf", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
                                         fprintf(outfile, ", %f\n", delay);
                                     }
                                     if (monitor)
                                     {
+                                        fprintf(stdout, "%lf ", theTime);
                                         theFlow->PrintDescription(stdout);
-                                        fprintf(outfile, " %f\n", delay);
+                                        fprintf(stdout, " %lf\n", delay);
                                     }
-                                    
                                 }
                             }
                             break;
@@ -3309,15 +3311,16 @@ int main(int argc, char* argv[])
                                 }
                                 if (outfile)
                                 {
-                                    fprintf(outfile, "%f", theTime);
+                                    fprintf(outfile, "%lf", theTime);
                                     unsigned int n = flowNumber;
                                     while (--n) fprintf(outfile, ", ");
-                                    fprintf(outfile, ", %f\n", delay);
+                                    fprintf(outfile, ", %lf\n", delay);
                                 }
                                 if (monitor)
                                 {
+                                    fprintf(stdout, "%lf ", theTime);
                                     theFlow->PrintDescription(stdout);
-                                    fprintf(stdout, " %f\n", delay);
+                                    fprintf(stdout, " %lf\n", delay);
                                 }
                             }
                             break;
@@ -3347,21 +3350,21 @@ int main(int argc, char* argv[])
                                     }
                                     if (outfile)
                                     {
-                                        fprintf(outfile, "%f", theTime);
+                                        fprintf(outfile, "%lf", theTime);
                                         unsigned int n = flowNumber;
                                         while (--n) fprintf(outfile, ", ");
                                         fprintf(outfile, ", %7.3e\n", velocity);
                                     }
                                     if (monitor)
                                     {
+                                        fprintf(stdout, "%lf ", theTime);
                                         theFlow->PrintDescription(stdout);
-                                        fprintf(outfile, " %f\n", velocity);
+                                        fprintf(stdout, " %lf\n", velocity);
                                     }
                                 }
                             }
                             break;
                         }
-                        
                         default:
                             fprintf(stderr, "trpr: Unsupported plot mode!\n");
                             exit(-1);
@@ -3440,7 +3443,7 @@ int main(int argc, char* argv[])
     if ((0.0 != windowSize) && !noEvents) 
     {
         //fprintf(stderr, "TRPR Updating final window theStart:%lf theEnd:%lf theTime:%lf\n", theStart, theEnd, theTime);
-        UpdateWindowPlot(plotMode, flowList, outfile, theTime+0.1, theStart, theEnd, realTime, stairStep); 
+        UpdateWindowPlot(plotMode, flowList, outfile, theTime+0.1, theStart, theEnd, realTime, stairStep, monitor); 
     } 
 
     if (LOSS2 == plotMode)
@@ -3470,12 +3473,12 @@ int main(int argc, char* argv[])
             if (outfile)
             {
                 // Window start
-                fprintf(outfile, "%f", nextFlow->LossWindowStart2());
+                fprintf(outfile, "%lf", nextFlow->LossWindowStart2());
                 unsigned int n = flowNumber;
                 while (--n) fprintf(outfile, ", ");
                 fprintf(outfile, ", %7.3e\n", lossFraction);
                 // Window end
-                fprintf(outfile, "%f", nextFlow->LossWindowEnd2());
+                fprintf(outfile, "%lf", nextFlow->LossWindowEnd2());
                 n = flowNumber;
                 while (--n) fprintf(outfile, ", ");
                 fprintf(outfile, ", %7.3e\n", lossFraction);
@@ -3522,7 +3525,7 @@ int main(int argc, char* argv[])
             fprintf(outfile, "set title '%s %s'\n", 
                        surname? surname : "", output_file);
         if (dumb)
-	  fprintf(outfile, "set terminal dumb\n"); 
+	        fprintf(outfile, "set terminal dumb\n"); 
         fprintf(outfile, "set xlabel 'Time (sec)'\n");
         double min = 0.0, max = 0.0;
         switch (plotMode)
@@ -3530,33 +3533,32 @@ int main(int argc, char* argv[])
             case RATE:            
                 fprintf(outfile, "set ylabel 'Rate (kbps)'\n");
                 fprintf(outfile, "set style data lines\n");
-		min = minYRange < 0.0 ? 0.0 : minYRange;
-		max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		if (max < 0.0)
-		  fprintf(outfile, "set yrange[%f:*]\n",min);
-		else 
-		  fprintf(outfile, "set yrange[%f:%f]\n",min,max);
+		        min = minYRange < 0.0 ? 0.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (max < 0.0)
+		          fprintf(outfile, "set yrange[%lf:*]\n",min);
+		        else 
+		          fprintf(outfile, "set yrange[%lf:%lf]\n",min,max);
                 break;
                 
             case LOSS:            
             case LOSS2:            
                 fprintf(outfile, "set ylabel 'Loss Fraction'\n");
                 fprintf(outfile, "set style data lines\n");
-
-		max = maxYRange < 0.0 ? 1.1 : maxYRange;
-		if (autoScale)
-		{
-		  min = minYRange < 0.0 ? -0.01 : minYRange;
-		  if (maxYRange < 0.0)
-		    fprintf(outfile, "set yrange[%f:*]\n",min);
-		  else
-		    fprintf(outfile, "set yrange[%f:%f]\n",min,max);
-		}
-		else
-		{
-		  min = minYRange < 0.0 ? -0.1 : minYRange;
-		  fprintf(outfile, "set yrange[%f:%f]\n",min,max);
-		}
+		        max = maxYRange < 0.0 ? 1.1 : maxYRange;
+		        if (autoScale)
+		        {
+		          min = minYRange < 0.0 ? -0.01 : minYRange;
+		          if (maxYRange < 0.0)
+		            fprintf(outfile, "set yrange[%lf:*]\n",min);
+		          else
+		            fprintf(outfile, "set yrange[%lf:%lf]\n",min,max);
+		        }
+		        else
+		        {
+		          min = minYRange < 0.0 ? -0.1 : minYRange;
+		          fprintf(outfile, "set yrange[%lf:%lf]\n",min,max);
+		        }
                 break;
             
 	        case DROPS:
@@ -3576,9 +3578,9 @@ int main(int argc, char* argv[])
                 if ((minYRange != -1.0) || (maxYRange != -1.0))
                 {
                     if (maxYRange != -1.0)
-                        fprintf(outfile, "set yrange[%f:%f]\n",minYRange,maxYRange);
+                        fprintf(outfile, "set yrange[%lf:%lf]\n",minYRange,maxYRange);
                     else
-                        fprintf(outfile, "set yrange[%f:*]\n",minYRange);
+                        fprintf(outfile, "set yrange[%lf:*]\n",minYRange);
                 }
                 break;
 	        
@@ -3591,9 +3593,9 @@ int main(int argc, char* argv[])
                 if ((minYRange != -1.0) || (maxYRange != -1.0))
                 {
                     if (maxYRange != -1.0)
-                        fprintf(outfile, "set yrange[%f:%f]\n",minYRange,maxYRange);
+                        fprintf(outfile, "set yrange[%lf:%lf]\n",minYRange,maxYRange);
                     else
-                        fprintf(outfile, "set yrange[%f:*]\n",minYRange);
+                        fprintf(outfile, "set yrange[%lf:*]\n",minYRange);
                 }
                 break;
                 
@@ -3606,9 +3608,9 @@ int main(int argc, char* argv[])
                 if ((minYRange != -1.0) || (maxYRange != -1.0))
                 {
                     if (maxYRange != -1.0)
-                        fprintf(outfile, "set yrange[%f:%f]\n",minYRange,maxYRange);
+                        fprintf(outfile, "set yrange[%lf:%lf]\n",minYRange,maxYRange);
                     else
-                        fprintf(outfile, "set yrange[%f:*]\n",minYRange);
+                        fprintf(outfile, "set yrange[%lf:*]\n",minYRange);
                 }
                 break;
                 
@@ -3648,8 +3650,8 @@ int main(int argc, char* argv[])
             flowCount++;
             if (multiplot) 
             {
-                fprintf(outfile, "set size 1.0,%f\n", scale);
-                fprintf(outfile, "set origin 0.0,%f\n", origin);
+                fprintf(outfile, "set size 1.0,%lf\n", scale);
+                fprintf(outfile, "set origin 0.0,%lf\n", origin);
                 fprintf(outfile, "plot ");
                 origin += scale;
                 fprintf(outfile, "\\\n'%s' using 1:%d t '", output_file, x++);
@@ -3898,12 +3900,12 @@ int main(int argc, char* argv[])
         { 
             fprintf(stdout, "#flow>");
             nextFlow->PrintDescription(stdout);
-            fprintf(stdout, " min>%f max>%f percentiles(", 
+            fprintf(stdout, " min>%lf max>%lf percentiles(", 
                     nextFlow->SummaryMin(), nextFlow->SummaryMax());
             for (int j = 0; j < 6; j++)
             {
                 double percentile = nextFlow->Percentile(p[j]);
-                fprintf(stdout, "%2d>%f ", (int)(p[j]*100.0+0.5), percentile);
+                fprintf(stdout, "%2d>%lf ", (int)(p[j]*100.0+0.5), percentile);
             }
             fprintf(stdout, ")\n");
             nextFlow->PrintHistogram(stdout);
@@ -4708,7 +4710,7 @@ FastReader::Result FastReader::Readline(FILE*         filePtr,
 
 void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
                       double theTime, double windowStart, double windowEnd, 
-                      bool realTime, bool stairStep)
+                      bool realTime, bool stairStep, bool monitor)
 {
     double windowSize = windowEnd - windowStart;
     if (windowSize <= 0.0) return;
@@ -4727,7 +4729,7 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
             {
                 // Plot window start point (also prune/add "realTime" data for all flows)
                 Flow* nextFlow = flowList.Head();
-                if (outfile) fprintf(outfile, "%f", windowStart);
+                if (outfile) fprintf(outfile, "%lf", windowStart);
                 while (nextFlow)
                 {
                     double value;
@@ -4782,7 +4784,7 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
             }  // end if (stairStep)
             
             // Window end point
-            if (outfile) fprintf(outfile, "%f", windowEnd);
+            if (outfile) fprintf(outfile, "%lf", windowEnd);
             Flow* nextFlow = flowList.Head();
             unsigned int flowCount = 0;
             while (nextFlow)
@@ -4825,6 +4827,14 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
                         }
                     }
                 }
+                if (monitor && !isnan(value))
+                {
+                    fprintf(stdout, "%lf ", windowEnd);
+                    nextFlow->PrintDescription(stdout);
+                    fprintf(stdout, " %lf\n", value);
+                    fflush(stdout);
+                }
+                
                 if (outfile) 
                 {
                     if (isnan(value))
@@ -4860,12 +4870,12 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
                 {
                     if (stairStep)
                     {
-                        fprintf(outfile, "%f", windowEnd); 
+                        fprintf(outfile, "%lf", windowEnd); 
                         for (unsigned int i = 0; i < flowCount; i++) 
                             fprintf(outfile, ", %7.3e", value);
                         fprintf(outfile, "\n");
                     }
-                    fprintf(outfile, "%f", (tempEnd - windowSize)); 
+                    fprintf(outfile, "%lf", (tempEnd - windowSize)); 
                     for (unsigned int i = 0; i < flowCount; i++) 
                         fprintf(outfile, ", %7.3e", value);
                     fprintf(outfile, "\n");
@@ -4925,40 +4935,38 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
             fprintf(stdout, "set output '%s'\n", pngFile);  
         }
         fprintf(stdout, "set xlabel 'Time (sec)'\n");
-	double min = 0.0, max = 0.0;
+	    double min = 0.0, max = 0.0;
         switch (plotMode)
         {
             case RATE:
                 fprintf(stdout, "set ylabel 'Rate (kbps)'\n");
                 fprintf(stdout, "set style data lines\n");
-
-		min = minYRange < 0.0 ? 0.0 : minYRange;
-		max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
-		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		        min = minYRange < 0.0 ? 0.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (max < 0.0)
+		          fprintf(stdout, "set yrange[%lf:*]\n",min);
+		        else 
+		          fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
                  
             case LOSS:
             case LOSS2:            
                 fprintf(stdout, "set ylabel 'Loss Fraction'\n");
                 fprintf(stdout, "set style data lines\n");
-
-		max = maxYRange < 0.0 ? 1.1 : maxYRange;
-		if (autoScale)
-		{
-		  min = minYRange < 0.0 ? -0.01 : minYRange;
-		  if (maxYRange < 0.0)
-		    fprintf(stdout, "set yrange[%f:*]\n",min);
-		  else
-		    fprintf(stdout, "set yrange[%f:%f]\n",min,max);
-		}
-		else
-		{
-		  min = minYRange < 0.0 ? -0.1 : minYRange;
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
-		}
+		        max = maxYRange < 0.0 ? 1.1 : maxYRange;
+		        if (autoScale)
+		        {
+		          min = minYRange < 0.0 ? -0.01 : minYRange;
+		          if (maxYRange < 0.0)
+		            fprintf(stdout, "set yrange[%lf:*]\n",min);
+		          else
+		            fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
+		        }
+		        else
+		        {
+		          min = minYRange < 0.0 ? -0.1 : minYRange;
+		          fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
+		        }
                 break;
                  
             case INTERARRIVAL:
@@ -4967,28 +4975,27 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
                     fprintf(stdout, "set style data points\n");
                 else
                     fprintf(stdout, "set style data lines\n");
-
-		min = minYRange < 0.0 ? 0.0 : minYRange;
-		max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
-		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		        min = minYRange < 0.0 ? 0.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (max < 0.0)
+		          fprintf(stdout, "set yrange[%lf:*]\n",min);
+		        else 
+		          fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
             
 	        case DROPS:
 	            fprintf(stdout, "set ylabel 'Drops'\n");
-		    if (scatter)
-		      fprintf(stdout, "set style data points\n");
-		    else
-		      fprintf(stdout, "set style data lines\n");
+		        if (scatter)
+		          fprintf(stdout, "set style data points\n");
+		        else
+		          fprintf(stdout, "set style data lines\n");
 
-		    min = minYRange < 0.0 ? 0.0 : minYRange;
-		    max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		    if (max < 0.0)
-		      fprintf(stdout, "set yrange[%f:*]\n",min);
-		    else 
-		      fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		        min = minYRange < 0.0 ? 0.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (max < 0.0)
+		          fprintf(stdout, "set yrange[%lf:*]\n",min);
+		        else 
+		          fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break; 
                 
             case COUNT:
@@ -4997,13 +5004,12 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
                     fprintf(stdout, "set style data points\n");
                 else
                     fprintf(stdout, "set style data lines\n");
-
-		min = minYRange < 0.0 ? 0.0 : minYRange;
-		max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
-		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		        min = minYRange < 0.0 ? 0.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (max < 0.0)
+		          fprintf(stdout, "set yrange[%lf:*]\n",min);
+		        else 
+		          fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break; 
 		
             case LATENCY:
@@ -5012,41 +5018,39 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
                     fprintf(stdout, "set style data points\n");
                 else
                     fprintf(stdout, "set style data lines\n");
+		        min = minYRange < 0.0 ? -1.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (min < 0.0)
+		          fprintf(stdout, "set yrange[*:");
+		        else
+		          fprintf(stdout, "set yrange[%lf:",min);
 
-		min = minYRange < 0.0 ? -1.0 : minYRange;
-		max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		if (min < 0.0)
-		  fprintf(stdout, "set yrange[*:");
-		else
-		  fprintf(stdout, "set yrange[%f:",min);
-
-		if (max < 0.0)
-		  fprintf(stdout, "*]\n");
-		else 
-		  fprintf(stdout, "%f]\n",max);
+		        if (max < 0.0)
+		          fprintf(stdout, "*]\n");
+		        else 
+		          fprintf(stdout, "%lf]\n",max);
                 break;
                 
             case VELOCITY:
                 fprintf(stdout, "set ylabel 'Velocity (meters/sec)'\n");
                 fprintf(stdout, "set style data lines\n");
-		min = minYRange < 0.0 ? 0.0 : minYRange;
-		max = maxYRange < 0.0 ? -1.0 : maxYRange;
-		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
-		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		        min = minYRange < 0.0 ? 0.0 : minYRange;
+		        max = maxYRange < 0.0 ? -1.0 : maxYRange;
+		        if (max < 0.0)
+		          fprintf(stdout, "set yrange[%lf:*]\n",min);
+		        else 
+		          fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
                 
             default:
                 fprintf(stderr, "trpr: Unsupported plot mode!\n");
                 exit(-1);
-        }
-        
-	if (legend)
-	  fprintf(stdout, "set key bottom right\n");
-	else
-	  fprintf(stdout, "set key off\n");
-        fprintf(stdout, "set xrange[%f:%f]\n", xMin, xMax);        
+        }  // end switch(plotMode)
+	    if (legend)
+	        fprintf(stdout, "set key bottom right\n");
+	    else
+	        fprintf(stdout, "set key off\n");
+        fprintf(stdout, "set xrange[%lf:%lf]\n", xMin, xMax);        
         fprintf(stdout, "plot ");
         while (nextFlow)
         {
@@ -5057,7 +5061,6 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
             if (nextFlow) fprintf(stdout, ", ");
         }
         fprintf(stdout, "\n");
-        
         nextFlow = flowList->Head();
         while (nextFlow)
         {
@@ -5080,8 +5083,8 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
                         value = 1.0;
                          break;
                 }
-                fprintf(stdout, "%f, %f\n", xMin, value);
-                fprintf(stdout, "%f, %f\n", xMax, value);
+                fprintf(stdout, "%lf, %lf\n", xMin, value);
+                fprintf(stdout, "%lf, %lf\n", xMax, value);
             }
             fprintf(stdout, "e\n");
             nextFlow = nextFlow->Next();
@@ -5122,9 +5125,9 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		min = minYRange < 0.0 ? 0.0 : minYRange;
 		max = maxYRange < 0.0 ? -1.0 : maxYRange;
 		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
+		  fprintf(stdout, "set yrange[%lf:*]\n",min);
 		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		  fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
                  
             case LOSS:
@@ -5136,14 +5139,14 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		{
 		  min = minYRange < 0.0 ? -0.01 : minYRange;
 		  if (maxYRange < 0.0)
-		    fprintf(stdout, "set yrange[%f:*]\n",min);
+		    fprintf(stdout, "set yrange[%lf:*]\n",min);
 		  else
-		    fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		    fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
 		}
 		else
 		{
 		  min = minYRange < 0.0 ? -0.1 : minYRange;
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		  fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
 		}
                 break;
                  
@@ -5156,9 +5159,9 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		min = minYRange < 0.0 ? 0.0 : minYRange;
 		max = maxYRange < 0.0 ? -1.0 : maxYRange;
 		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
+		  fprintf(stdout, "set yrange[%lf:*]\n",min);
 		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		  fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
             
 	        case DROPS:
@@ -5170,9 +5173,9 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		    min = minYRange < 0.0 ? 0.0 : minYRange;
 		    max = maxYRange < 0.0 ? -1.0 : maxYRange;
 		    if (max < 0.0)
-		      fprintf(stdout, "set yrange[%f:*]\n",min);
+		      fprintf(stdout, "set yrange[%lf:*]\n",min);
 		    else 
-		      fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		      fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
                 
             case COUNT:
@@ -5184,9 +5187,9 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		min = minYRange < 0.0 ? 0.0 : minYRange;
 		max = maxYRange < 0.0 ? -1.0 : maxYRange;
 		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
+		  fprintf(stdout, "set yrange[%lf:*]\n",min);
 		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		  fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
 		 
             case LATENCY:
@@ -5201,12 +5204,12 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		if (min < 0.0)
 		  fprintf(stdout, "set yrange[*:");
 		else
-		  fprintf(stdout, "set yrange[%f:",min);
+		  fprintf(stdout, "set yrange[%lf:",min);
 
 		if (max < 0.0)
 		  fprintf(stdout, "*]\n");
 		else 
-		  fprintf(stdout, "%f]\n",max);
+		  fprintf(stdout, "%lf]\n",max);
                 break;
             
             case VELOCITY:
@@ -5214,9 +5217,9 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 		min = minYRange < 0.0 ? 0.0 : minYRange;
 		max = maxYRange < 0.0 ? -1.0 : maxYRange;
 		if (max < 0.0)
-		  fprintf(stdout, "set yrange[%f:*]\n",min);
+		  fprintf(stdout, "set yrange[%lf:*]\n",min);
 		else 
-		  fprintf(stdout, "set yrange[%f:%f]\n",min,max);
+		  fprintf(stdout, "set yrange[%lf:%lf]\n",min,max);
                 break;
                     
             default:
@@ -5228,19 +5231,19 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
 	else
 	  fprintf(stdout, "set key off\n");
 
-        fprintf(stdout, "set xrange[%f:%f]\n", xMin, xMax);
+        fprintf(stdout, "set xrange[%lf:%lf]\n", xMin, xMax);
         
         fprintf(stdout, "set size 1.0,1.0\n");
         double origin = 0.0;
-        fprintf(stdout, "set origin 0.0,%f\n", origin);
+        fprintf(stdout, "set origin 0.0,%lf\n", origin);
         fprintf(stdout, "set multiplot\n");
         double scale = 1.0 / ((double)count);
                       
         nextFlow = flowList->Head();
         while (nextFlow)
         {
-            fprintf(stdout, "set size 1.0,%f\n", scale);
-            fprintf(stdout, "set origin 0.0,%f\n", origin);
+            fprintf(stdout, "set size 1.0,%lf\n", scale);
+            fprintf(stdout, "set origin 0.0,%lf\n", origin);
             origin += scale;
             fprintf(stdout, "plot '-' t '");
             nextFlow->PrintDescription(stdout);
@@ -5264,8 +5267,8 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
                         value = 1.0;
                         break;
                 }
-                fprintf(stdout, "%f, %f\n", xMin, value);
-                fprintf(stdout, "%f, %f\n", xMax, value);
+                fprintf(stdout, "%lf, %lf\n", xMin, value);
+                fprintf(stdout, "%lf, %lf\n", xMax, value);
             }
             fprintf(stdout, "e\n");
             nextFlow = nextFlow->Next();
