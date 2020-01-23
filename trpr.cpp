@@ -677,8 +677,6 @@ class PointList
     
 };
 
-
-
 class LossTracker
 {
     public:
@@ -1970,7 +1968,7 @@ inline void usage()
                     "            [offset <hh:mm:ss>][absolute]\n"
                     "            [summary][monitor][histogram][replay <factor>]\n"
 					"            [png <pngFile>][post <postFile>][gif <gifFile>][multiplot]\n"
-                    "            [surname <titlePrefix>][ramp][scale]\n"
+                    "            [title <plotName>][surname <titlePrefix>][ramp][scale]\n"
                     "            [nolegend]\n");
     fprintf(stderr, " (NOTE: 'Wildcard' type, addr, or port parameters with 'X'\n");
     fprintf(stderr, "         'range' parameters are in seconds\n");
@@ -2129,6 +2127,7 @@ int main(int argc, char* argv[])
     unsigned int seqMax = 0xffffffff;  // 32-bit sequence number by default
     
     char* surname = NULL;
+    char* title = NULL;
     
     PacketEvent::TracePoint link;   // Our tracepoint (wildcard default)
     char* linkSrc = NULL;
@@ -2428,6 +2427,17 @@ int main(int argc, char* argv[])
                 exit(-1);
             }
             surname = argv[i++];
+        }          
+        else if (!strcmp("title", argv[i]))
+        {
+            i++;
+            if (i >= argc)
+            {
+                fprintf(stderr, "trpr: Insufficient \"title\" arguments!\n");
+                usage();
+                exit(-1);
+            }
+            title = argv[i++];
         }    
         else if (!strcmp("auto", argv[i]))
         {
@@ -3522,8 +3532,17 @@ int main(int argc, char* argv[])
             fprintf(outfile, "set output '%s'\n", png_file);   
         }
         if (!multiplot)
-            fprintf(outfile, "set title '%s %s'\n", 
-                       surname? surname : "", output_file);
+        {
+            if (NULL != title)
+            {
+                fprintf(outfile, "set title '%s'\n", title);
+            }
+            else
+            {
+                fprintf(outfile, "set title '%s %s'\n", 
+                                  surname? surname : "", output_file);
+            }
+        }
         if (dumb)
 	        fprintf(outfile, "set terminal dumb\n"); 
         fprintf(outfile, "set xlabel 'Time (sec)'\n");
