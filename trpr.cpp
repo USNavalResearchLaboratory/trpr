@@ -3542,6 +3542,11 @@ int main(int argc, char* argv[])
                 fprintf(outfile, "set title '%s %s'\n", 
                                   surname? surname : "", output_file);
             }
+            
+        }
+        else
+        {
+            fprintf(outfile, "set xrange [:%lf]\n", maxTime);
         }
         if (dumb)
 	        fprintf(outfile, "set terminal dumb\n"); 
