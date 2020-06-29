@@ -1381,10 +1381,10 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
                       bool realTime, bool stairStep, bool monitor);
 void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xMax, 
                    const char* pngFile, const char* postFile, bool scatter, 
-                   bool autoScale, bool legend, double minYRange, double maxYRange);
+                   bool autoScale, bool legend, bool outside, double minYRange, double maxYRange);
 void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xMax, 
                         const char* pngFile, const char* postFile, bool scatter,
-                        bool autoScale, bool legend, double minYRange, double maxYRange);
+                        bool autoScale, bool legend, bool outside, double minYRange, double maxYRange);
 
 
 
@@ -1969,7 +1969,7 @@ inline void usage()
                     "            [summary][monitor][histogram][replay <factor>]\n"
 					"            [png <pngFile>][post <postFile>][gif <gifFile>][multiplot]\n"
                     "            [title <plotName>][surname <titlePrefix>][ramp][scale]\n"
-                    "            [nolegend]\n");
+                    "            [label <text>][nolegend]\n");
     fprintf(stderr, " (NOTE: 'Wildcard' type, addr, or port parameters with 'X'\n");
     fprintf(stderr, "         'range' parameters are in seconds\n");
 
@@ -2113,6 +2113,7 @@ int main(int argc, char* argv[])
     double maxYRange = -1.0;
     bool print_key = false;
     bool legend = true;
+    bool outside = false;
     double offsetTime = -1.0;
     bool summarize = false;
     bool make_histogram = false;
@@ -2123,11 +2124,13 @@ int main(int argc, char* argv[])
     bool autoScale = false;
     bool discardDuplicates = false;
     bool monitor = false;
+    bool clock = false;
     
     unsigned int seqMax = 0xffffffff;  // 32-bit sequence number by default
     
     char* surname = NULL;
     char* title = NULL;
+    char* label = NULL;
     
     PacketEvent::TracePoint link;   // Our tracepoint (wildcard default)
     char* linkSrc = NULL;
@@ -2333,12 +2336,12 @@ int main(int argc, char* argv[])
             plotMode = INTERARRIVAL;
         } 
         else if (!strncmp("drops", argv[i], 4))
-	{
-	    i++;
-	    plotMode = DROPS;
-            tempEventMask |= DROP;
-	}
-	else if (!strncmp("loss", argv[i], 5))
+	    {
+	        i++;
+	        plotMode = DROPS;
+                tempEventMask |= DROP;
+	    }
+	    else if (!strncmp("loss", argv[i], 5))
         {
             i++;
             plotMode = LOSS2;  // we're using LOSS2 as our default loss tracking algorithm
@@ -2368,11 +2371,16 @@ int main(int argc, char* argv[])
             i++;
             print_key = true;
         }
-	else if (!strcmp("nolegend", argv[i]))
-	{
-	    i++;
-	    legend = false;
-	}
+	    else if (!strcmp("nolegend", argv[i]))
+	    {
+	        i++;
+	        legend = false;
+	    }
+	    else if (!strcmp("outside", argv[i]))
+	    {
+	        i++;
+	        outside = true;
+	    }
         else if (!strcmp("png", argv[i]))
         {
             i++;
@@ -2438,6 +2446,18 @@ int main(int argc, char* argv[])
                 exit(-1);
             }
             title = argv[i++];
+        }    
+                  
+        else if (!strcmp("label", argv[i]))
+        {
+            i++;
+            if (i >= argc)
+            {
+                fprintf(stderr, "trpr: Insufficient \"label\" arguments!\n");
+                usage();
+                exit(-1);
+            }
+            label = argv[i++];
         }    
         else if (!strcmp("auto", argv[i]))
         {
@@ -2581,6 +2601,11 @@ int main(int argc, char* argv[])
         else if (!strncmp("monitor", argv[i], 3))
         {
             monitor = true;  
+            i++; 
+        }                
+        else if (!strncmp("clock", argv[i], 3))
+        {
+            clock = true;  // x-axis data output as HH:MM:SS clock time
             i++; 
         }         
         else if (!strncmp("histogram", argv[i], 3))
@@ -3424,11 +3449,11 @@ int main(int argc, char* argv[])
                 if (multiplot)
                     UpdateMultiGnuplot(plotMode, &flowList, minTime, maxTime, 
                                        png_file, post_file, (windowSize == 0.0),
-                                       autoScale, legend, minYRange, maxYRange);                
+                                       autoScale, legend, outside, minYRange, maxYRange);                
                 else
                     UpdateGnuplot(plotMode, &flowList, minTime, maxTime, 
                                   png_file, post_file, (windowSize == 0.0),
-                                  autoScale, legend, minYRange, maxYRange);                
+                                  autoScale, legend, outside, minYRange, maxYRange);                
             }
 #endif // !WIN32
             if (outfile) fflush(outfile);
@@ -3502,11 +3527,11 @@ int main(int argc, char* argv[])
         if (multiplot)
             UpdateMultiGnuplot(plotMode, &flowList, minTime, maxTime, 
                                png_file, post_file, (windowSize == 0.0),
-                               autoScale, legend, minYRange, maxYRange);                
+                               autoScale, legend, outside, minYRange, maxYRange);                
         else
             UpdateGnuplot(plotMode, &flowList, minTime, maxTime, 
                           png_file, post_file, (windowSize == 0.0),
-                          autoScale, legend, minYRange, maxYRange);                
+                          autoScale, legend, outside, minYRange, maxYRange);                
     }
     if (outfile) fflush(outfile);
 
@@ -3545,7 +3570,19 @@ int main(int argc, char* argv[])
         }
         if (dumb)
 	        fprintf(outfile, "set terminal dumb\n"); 
-        fprintf(outfile, "set xlabel 'Time (sec)'\n");
+        
+        if (clock)
+        {
+            fprintf(outfile, "set xlabel 'Time'\n");
+            fprintf(outfile, "set timefmt '%%H:%%M:%%S'\n");
+            fprintf(outfile, "set xdata time\n");
+        }
+        else
+        {
+            fprintf(outfile, "set xlabel 'Time (sec)'\n");
+        }
+        
+        
         double min = 0.0, max = 0.0;
         switch (plotMode)
         {
@@ -3644,9 +3681,14 @@ int main(int argc, char* argv[])
         }  // end switch(plotMode)
         
 	    if (legend)
+        {
+            if (outside) fprintf(outfile, "set key outside\n");
 	        fprintf(outfile, "set key bottom right\n");
+        }
 	    else
+        {
 	        fprintf(outfile, "set key off\n");
+        }
         double origin = 0.0;
         double scale = 1.0 / ((double)flowList.Count());
         Flow* nextFlow = flowList.Head();
@@ -3677,9 +3719,18 @@ int main(int argc, char* argv[])
             }
             else
             {
-                fprintf(outfile, "\\\n'-' t '");
+                fprintf(outfile, "\\\n'-' using 1:2 t '");
             }
-            nextFlow->PrintDescription(outfile);
+            // TBD - append an index to 'label' when there are multiple flows?
+            if (NULL != label)
+            {
+                fprintf(outfile, "%s", label);
+                label = NULL;
+            }
+            else
+            {
+                nextFlow->PrintDescription(outfile);
+            }
             fprintf(outfile, "'");
             nextFlow = nextFlow->Next();
             if (nextFlow)
@@ -3776,7 +3827,18 @@ int main(int argc, char* argv[])
                         //exit(-1);
                     }
                     // Output "<time>, <value>"
-                    fprintf(outfile, "%lf, %lf\n", sec, value);
+                    if (clock)
+                    {
+                        // Output time as "clock" time format HH::MM::SS.xxx
+                        int hour = (int)sec / 3600;
+                        int minute = (int)(sec - hour*3600) / 60;
+                        double seconds = sec - (double)(hour*3600 + minute*60);
+                        fprintf(outfile, "%02d:%02d:%02lf, %lf\n", hour, minute, seconds, value);
+                    }
+                    else
+                    {
+                        fprintf(outfile, "%lf, %lf\n", sec, value);
+                    }
                     len = MAX_LINE;
                 }
                 fprintf(outfile, "e\n");  // print gnuplot end of data 'e'
@@ -4937,7 +4999,7 @@ void UpdateWindowPlot(PlotMode plotMode, FlowList& flowList, FILE* outfile,
 // Generates realTime update gnuplot commands
 void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xMax, 
                    const char* pngFile, const char* postFile, bool scatter, 
-                   bool autoScale, bool legend,double minYRange, double maxYRange)
+                   bool autoScale, bool legend, bool outside, double minYRange, double maxYRange)
 {
     unsigned int flowCount = flowList->Count();
     Flow* nextFlow = flowList->Head();
@@ -5066,9 +5128,14 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
                 exit(-1);
         }  // end switch(plotMode)
 	    if (legend)
+        {
+            if (outside) fprintf(stdout, "set key outside\n");
 	        fprintf(stdout, "set key bottom right\n");
+        }
 	    else
+        {
 	        fprintf(stdout, "set key off\n");
+        }
         fprintf(stdout, "set xrange[%lf:%lf]\n", xMin, xMax);        
         fprintf(stdout, "plot ");
         while (nextFlow)
@@ -5116,7 +5183,7 @@ void UpdateGnuplot(PlotMode plotMode, FlowList* flowList, double xMin, double xM
 void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
                         double xMin, double xMax, 
                         const char* pngFile, const char* postFile, bool scatter,
-                        bool autoScale, bool legend, double minYRange, double maxYRange)
+                        bool autoScale, bool legend, bool outside, double minYRange, double maxYRange)
 {
     unsigned int count = flowList->Count();
     double yMax = 0.0;
@@ -5245,10 +5312,15 @@ void UpdateMultiGnuplot(PlotMode plotMode, FlowList* flowList,
                 fprintf(stderr, "trpr: Unsupported plot mode!\n");
                 exit(-1);
         }
-	if (legend)
-	  fprintf(stdout, "set key bottom right\n");
-	else
-	  fprintf(stdout, "set key off\n");
+	    if (legend)
+        {
+            if (outside) fprintf(stdout, "set key outside\n");
+	        fprintf(stdout, "set key bottom right\n");
+        }
+	    else
+        {
+	      fprintf(stdout, "set key off\n");
+        }
 
         fprintf(stdout, "set xrange[%lf:%lf]\n", xMin, xMax);
         
