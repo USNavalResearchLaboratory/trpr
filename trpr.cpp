@@ -65,7 +65,9 @@ inline int isnan(double x) {return _isnan(x);}
 #define MAX(X,Y) ((X>Y)?X:Y)
 #endif // !MIN
 
-const int MAX_LINE = 4096;
+unsigned lineCount = 0;
+
+const int MAX_LINE = 65536;
 
 enum TraceFormat {TCPDUMP, MGEN, NS};
 enum PlotMode {RATE, INTERARRIVAL, LATENCY, DROPS, LOSS, LOSS2, COUNT, VELOCITY};
@@ -3087,10 +3089,9 @@ int main(int argc, char* argv[])
                     
                     switch(plotMode)
                     {
-
                         case RATE:
                             if (0.0 != windowSize)
-                            {                            
+                            {               
                                 theFlow->AddBytes(pktSize);
                             }
                             else
@@ -3763,8 +3764,8 @@ int main(int argc, char* argv[])
         {
             // Append data from temp file to output file
             int result;
-            char buffer[1024];
-            while ((result = fread(buffer, sizeof(char), 1024, infile)))
+            char buffer[MAX_LINE];
+            while ((result = fread(buffer, sizeof(char), MAX_LINE, infile)))
                 fwrite(buffer, sizeof(char), result, outfile);
         }
         else
@@ -4789,6 +4790,7 @@ FastReader::Result FastReader::Readline(FILE*         filePtr,
                 return DONE;
         }
     }
+    fprintf(stderr, "trpr warning: exceeded max line length at count %u\n", count);
     // We've filled up the buffer provided with no end-of-line 
     return ERROR_;
 }  // end FastReader::Readline()
