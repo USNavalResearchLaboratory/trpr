@@ -2767,7 +2767,7 @@ int main(int argc, char* argv[])
         Flow* next = flowList.Head();
         while (next)
         {
-            fprintf(outfile, ", ");  
+            fprintf(outfile, "; ");  
             next->PrintDescription(outfile);
             next = next->Next(); 
         }   
@@ -3053,7 +3053,7 @@ int main(int argc, char* argv[])
                                 Flow* next = flowList.Head();
                                 while (next)
                                 {
-                                    fprintf(outfile, ", "); 
+                                    fprintf(outfile, "; "); 
                                     next->PrintDescription(outfile);
                                     next = next->Next();  
                                 }   
