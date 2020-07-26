@@ -3635,7 +3635,7 @@ int main(int argc, char* argv[])
                 break;
                 
             case COUNT:
-	    	    fprintf(outfile, "set ylabel 'Packet Count'\n");
+	    	    fprintf(outfile, "set ylabel 'Count'\n");
 		        if (windowSize != 0.0)
                     fprintf(outfile, "set style data lines\n");
                 else
