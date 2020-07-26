@@ -58,7 +58,7 @@ inline int isnan(double x) {return _isnan(x);}
 #include <arpa/inet.h>
 #endif // !WIN32
 
-#define VERSION "2.1b10"
+#define VERSION "2.1b11"
 
 #ifndef MIN
 #define MIN(X,Y) ((X<Y)?X:Y)
@@ -2756,6 +2756,9 @@ int main(int argc, char* argv[])
             exit(-1);
         } 
     }
+    
+    if (!use_gnuplot && (NULL == outfile))
+        outfile = stdout;
 
     // Print comment line with key to data columns
     if (outfile && print_key)
@@ -3062,7 +3065,7 @@ int main(int argc, char* argv[])
                         {
                             perror("trpr: Error allocating memory for new flow");
                             fclose(infile);
-                            if (outfile) fclose(outfile);
+                            if (outfile && (stdout != outfile)) fclose(outfile);
                             exit(-1);    
                         }                                
                     }
@@ -3537,7 +3540,7 @@ int main(int argc, char* argv[])
     if (outfile) fflush(outfile);
 
     
-    if (outfile) fclose(outfile);
+    if (outfile && (stdout != outfile)) fclose(outfile);
     
     // Create final output file with gnuplot header if applicable
     if (output_file && use_gnuplot)
