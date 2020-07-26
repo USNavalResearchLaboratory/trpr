@@ -3564,11 +3564,11 @@ int main(int argc, char* argv[])
         {
             if (NULL != title)
             {
-                fprintf(outfile, "set title '%s'\n", title);
+                fprintf(outfile, "set title \"%s\"\n", title);
             }
             else
             {
-                fprintf(outfile, "set title '%s %s'\n", 
+                fprintf(outfile, "set title \"%s %s\"\n", 
                                   surname? surname : "", output_file);
             }
             
