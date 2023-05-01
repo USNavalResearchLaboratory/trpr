@@ -29,7 +29,7 @@ const unsigned int MAX_LINE = 1024;
 void usage()
 {
     fprintf(stderr, "Usage: hcat [normalize][prange [<rangeMin>:]<rangeMax>][pc <percentile>]\n"
-                    "            [percent][count][range [<rangeMin>:]<rangeMax>]\n"
+                    "            [bins <numBins>][percent][count][range [<rangeMin>:]<rangeMax>]\n"
                     "            <file1> [<file2> <file3> ...]\n");
 }
 
