@@ -319,6 +319,7 @@ double Histogram::Percentile(double p)
 
 int main(int argc, char* argv[])
 {
+    unsigned int nbins = 1000;
     bool doNormalize = false;
     bool getPercentage = false;
     bool getCount = false;
@@ -345,6 +346,22 @@ int main(int argc, char* argv[])
         else if (!strncmp(argv[i], "percent", len))
         {
             getPercentage = true;
+            i++;
+        }
+        else if (!strncmp(argv[i], "bins", len))
+        {
+            if (++i >= argc)
+            {
+                fprintf(stderr, "hcat: missing \"bins\" args!\n");
+                usage();
+                exit(-1); 
+            }
+            if (1 != sscanf(argv[i], "%u", &nbins))
+            {
+                fprintf(stderr, "hcat: invalid bins <numBins>!\n");
+                usage();
+                exit(-1);
+            }
             i++;
         }
         else if (!strncmp(argv[i], "linear", len))
@@ -462,7 +479,7 @@ int main(int argc, char* argv[])
     }
     
     Histogram h;
-    h.Init(1000, q); // 1000 point, q-linear histogram 
+    h.Init(nbins, q); // 1000 point, q-linear histogram 
     
     if (presetRange)
     {

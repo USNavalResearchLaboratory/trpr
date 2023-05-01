@@ -2870,9 +2870,12 @@ int main(int argc, char* argv[])
             // Handle wrap around midnight
             if ((lastTime - theTime) > (SECONDS_PER_DAY/2.0))
             {
-                fprintf(stderr, "trpr warning: time wrap\n");
+                fprintf(stderr, "trpr warning: time wrap lastTime:%lf theTime:%lf\n", lastTime, theTime);
                 while (lastTime > theTime) 
+                {
                     theTime += SECONDS_PER_DAY; 
+                    refTime -= SECONDS_PER_DAY;
+                }
             }
         }
         
