@@ -4633,6 +4633,12 @@ unsigned int TcpdumpEventParser::PackHexLine(char* text, char* buf, unsigned int
         }
         else
         {
+            if ((byteCount+1) == buflen)        // handle odd byte count
+            {
+                *buf++ = value & 0x00ff;
+                byteCount += 1;
+            }
+
             // buf is full
             return byteCount;
         }
