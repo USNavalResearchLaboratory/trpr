@@ -4556,7 +4556,7 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
             theEvent->SetSize(pktSize); 
             double theTime = (((double)hrs) * 3600.0) +
                              (((double)min) * 60.0) +
-                             (double)sec;
+                             sec;
             theEvent->SetTime(theTime);
             theEvent->SetType(PacketEvent::RECEPTION);
             theEvent->InvalidateFlowId();
