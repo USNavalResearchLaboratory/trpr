@@ -4425,9 +4425,9 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
         {
             // Get time, protocol name (pname), and pktSize from header line
             unsigned int hrs, min;
-            float sec;  
+            double sec;  
             // Here we look to see if tcpdump was run with "-e" option 
-            if (5 == sscanf(buffer, "%u:%u:%f %31s > %31s", &hrs, &min, &sec, esrc, edst))
+            if (5 == sscanf(buffer, "%u:%u:%lf %31s > %31s", &hrs, &min, &sec, esrc, edst))
             {
                 /*
                 char* ptr = strstr(buffer, "ethertype");
@@ -4444,7 +4444,7 @@ bool TcpdumpEventParser::GetNextPacketEvent(FILE*        inFile,
                 strcpy(pname, "ether");
                 enet = true;
             }        
-            else if (4 != sscanf(buffer, "%u:%u:%f %31s", &hrs, &min, &sec, pname))
+            else if (4 != sscanf(buffer, "%u:%u:%lf %31s", &hrs, &min, &sec, pname))
             {
                 fprintf(stderr, "trpr: Invalid tcpdump output: \"%s\"\n", buffer);
                 len = MAX_LINE;
